@@ -367,10 +367,10 @@ tools:
     # tripace-server 自己的後端(internal/onagenttools/recommend_nearby.go),
     # onagent 收到 LLM 呼叫後直接 POST 到下面 endpoint,不經過瀏覽器分頁
     # ——見本檔案開頭「recommend_nearby 是例外」的完整說明。指向正式環境
-    # tripace-server(tripace.shuttle.tools);本機開發改回
+    # tripace-server(tripace.io);本機開發改回
     # http://localhost:8080/onagent/recommend_nearby 再推一次即可切換。
     backendDispatch:
-      endpoint: https://tripace.shuttle.tools/onagent/recommend_nearby
+      endpoint: https://tripace.io/onagent/recommend_nearby
       timeoutMs: 10000
     parameters:
       type: object
@@ -422,7 +422,7 @@ tools:
     # 的後端(internal/onagenttools/geocode.go),不經過瀏覽器分頁。指向正式
     # 環境;本機開發改回 http://localhost:8080/onagent/geocode 再推一次。
     backendDispatch:
-      endpoint: https://tripace.shuttle.tools/onagent/geocode
+      endpoint: https://tripace.io/onagent/geocode
       timeoutMs: 8000
     parameters:
       type: object

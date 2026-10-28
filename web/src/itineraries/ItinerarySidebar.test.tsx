@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { ItinerarySidebar } from './ItinerarySidebar'
 import { makeItinerary } from './testUtils'
@@ -80,5 +80,58 @@ describe('ItinerarySidebar', () => {
     expect(screen.getAllByRole('heading', { name: '延伸閱讀' })).toHaveLength(2)
     expect(spy.mock.calls.some((c) => String(c[0]).includes('same key'))).toBe(false)
     spy.mockRestore()
+  })
+
+  describe('業主投放方案', () => {
+    afterEach(() => vi.unstubAllGlobals())
+
+    it('有已發布的方案時,在側欄顯示 compact 卡片並先以行程專屬版位查詢', async () => {
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          placement: 'itinerary-sidebar',
+          campaigns: [{
+            campaignID: 'c1',
+            plans: [{
+              id: 'p1', campaignID: 'c1', category: 'kkday', title: '九份一日遊', status: 'published',
+              detail: JSON.stringify({ cid: 'abc', landingUrl: 'https://www.kkday.com/zh-tw/product/1?cid=abc', fromPrice: 'NT$ 599 起' }),
+              createdAt: '', updatedAt: '',
+            }],
+          }],
+        }),
+      })
+      vi.stubGlobal('fetch', fetchMock)
+      const { container } = renderSidebar(null)
+      await waitFor(() => expect(screen.getByText('九份一日遊')).toBeTruthy())
+      // 先查這個行程專屬的版位(itinerary-<id>),有方案就不再查預設
+      expect(String(fetchMock.mock.calls[0][0])).toContain('placement=itinerary-cur')
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(container.querySelector('.sponsored-plan-card--compact')).not.toBeNull()
+      expect(screen.getByText('NT$ 599 起')).toBeTruthy()
+    })
+
+    it('行程專屬版位沒有方案時退回 itinerary-sidebar', async () => {
+      const empty = { ok: true, json: async () => ({ placement: 'x', campaigns: [] }) }
+      const withPlan = {
+        ok: true,
+        json: async () => ({
+          placement: 'itinerary-sidebar',
+          campaigns: [{ campaignID: 'c1', plans: [{ id: 'p1', campaignID: 'c1', category: 'kkday', title: '預設方案', status: 'published', detail: '{}', createdAt: '', updatedAt: '' }] }],
+        }),
+      }
+      const fetchMock = vi.fn().mockResolvedValueOnce(empty).mockResolvedValueOnce(withPlan)
+      vi.stubGlobal('fetch', fetchMock)
+      renderSidebar(null)
+      await waitFor(() => expect(screen.getByText('預設方案')).toBeTruthy())
+      expect(String(fetchMock.mock.calls[0][0])).toContain('placement=itinerary-cur')
+      expect(String(fetchMock.mock.calls[1][0])).toContain('placement=itinerary-sidebar')
+    })
+
+    it('沒有方案時不渲染任何贊助卡片', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ placement: 'itinerary-sidebar', campaigns: [] }) }))
+      const { container } = renderSidebar(null)
+      await new Promise((r) => setTimeout(r, 20))
+      expect(container.querySelector('.sponsored-plan-card')).toBeNull()
+    })
   })
 })

@@ -190,3 +190,29 @@ func TestCleanText(t *testing.T) {
 		t.Fatal("非法 UTF-8 應被擋")
 	}
 }
+
+func TestBuildCIDAndLandingURL(t *testing.T) {
+	out, changed, err := buildFrom(t, `{"desc":"舊說明"}`, "-cid", "tripace-27468", "-landing-url", "https://www.kkday.com/zh-tw/product/2287")
+	if err != nil || !changed {
+		t.Fatalf("changed=%v err=%v", changed, err)
+	}
+	m := decode(t, out)
+	if m["cid"] != "tripace-27468" || m["landingUrl"] != "https://www.kkday.com/zh-tw/product/2287" || m["desc"] != "舊說明" {
+		t.Fatalf("cid/landingUrl 應寫入且保留其他欄位: %v", m)
+	}
+	out, _, _ = buildFrom(t, out, "-cid", "")
+	if _, ok := decode(t, out)["cid"]; ok {
+		t.Fatalf("-cid \"\" 應清除 cid: %s", out)
+	}
+}
+
+func TestBuildFromPrice(t *testing.T) {
+	out, _, err := buildFrom(t, ``, "-from-price", "NT$ 599 起")
+	if err != nil || decode(t, out)["fromPrice"] != "NT$ 599 起" {
+		t.Fatalf("fromPrice 應寫入: %s %v", out, err)
+	}
+	out, _, _ = buildFrom(t, out, "-from-price", "")
+	if _, ok := decode(t, out)["fromPrice"]; ok {
+		t.Fatalf("-from-price \"\" 應清除: %s", out)
+	}
+}

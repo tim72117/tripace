@@ -88,7 +88,9 @@ partner-cli campaign update -id <活動ID> [-name <活動名稱>] [-placement <�
 partner-cli campaign placements
 ```
 
-回傳後端目前認得的所有合法 `placement` slug 與中文名稱（例如 `kyoto-kiyomizu` 對應「京都清水寺」）。設定 `campaign create`/`campaign update` 的 `-placement` 旗標前，建議先跑這個指令確認 slug 拼對，而不是憑記憶猜——傳入不在這份清單裡的 slug 不會報錯，但活動永遠不會被對應的前台頁面查到。
+回傳後端目前認得的所有合法 `placement` slug 與中文名稱（例如 `kyoto-kiyomizu` 對應「京都清水寺」）。設定 `campaign create`/`campaign update` 的 `-placement` 旗標前，建議先跑這個指令確認 slug 拼對，而不是憑記憶猜——傳入不合法的 slug 後端會回 400 `invalid_placement`。
+
+**行程頁側欄可以依行程分別投放**：版位 `itinerary-sidebar` 是所有行程共用的預設；`itinerary-<行程 slug>`（例如 `itinerary-jozankei-1day`）只在該行程頁顯示，行程頁會先找專屬版位，沒有才退回預設。已發布到資料庫的行程會自動出現在 `campaign placements` 的清單裡；只存在於前端的範例行程（如 `hokkaido-5day`）不在清單中，但可以直接填 `itinerary-hokkaido-5day`（只能用小寫英數字與 `-`）。
 
 ### 5. 轉換活動狀態
 
@@ -123,7 +125,7 @@ partner-cli campaign delete -id <活動ID>
 partner-cli plan create -campaign <活動ID> -title <方案標題> [-category <分類>] [方案內容旗標]
 ```
 
-- `-category`：選填，自由字串，例如 `display`、`deeplink`、`group_tour`，用來分類方案性質，後端不驗證合法值。
+- `-category`：選填，自由字串，例如 `group_tour`，用來分類方案性質。唯一有特殊規則的值是 `kkday`（KKday 聯盟連結方案，見下一小節）。
 - 方案內容（選填）有三種給法，**優先用前兩種，不要手寫 JSON 字串**（引號、`\n`、`$` 跳脫和中文轉碼都很容易出錯）：
   1. **結構化旗標**（CLI 會自己組 JSON 並檢查格式）：`-departure "日期|星期|團費"`（可重複，每個旗標一個梯次，例如 `-departure "2026-10-27|星期二|$21,900"`；星期可留空 `"2026-10-27||$21,900"`）、`-highlight "文字"`（可重複，每個旗標一行亮點）、`-days`、`-original-price`、`-desc`、`-cta-label`、`-landing-url`。含 `$`、`|` 或空白的值要加引號，bash 用單引號最單純。
   2. **`-detail-file <路徑>`**：從 UTF-8 檔案讀整份 JSON，`-` 代表從 stdin 讀。內容多或含中文時最穩，先把 JSON 寫成 UTF-8 檔案再傳路徑。Windows PowerShell 5.1 的 `>` 預設存成 UTF-16，CLI 會偵測到並提示改存 UTF-8。
@@ -132,6 +134,22 @@ partner-cli plan create -campaign <活動ID> -title <方案標題> [-category <�
 - CLI 與後端都會拒絕含亂碼字元（U+FFFD）的文字，避免中文被 shell 轉錯碼後默默存進去。遇到這個錯誤時，改用 `-detail-file` 或請使用者到網頁版控制台輸入。
 
 新建立的方案狀態固定是 `draft`，一樣要手動轉成 `published` 才會顯示在前台（見「轉換方案狀態」）。
+
+#### KKday 聯盟連結方案（`-category kkday`）
+
+業主自己的 KKday 聯盟連結，用同一張前台投放卡片顯示：
+
+```bash
+partner-cli plan create -campaign <活動ID> -title "九份・野柳・十分・平溪一日遊" -category kkday   -cid tripace-27468 -landing-url "https://www.kkday.com/zh-tw/product/2287"   -desc "含夜遊選項・台北出發" -cta-label "查看票價"
+```
+
+- `-cid` 與 `-landing-url` 兩個都**必填**。`-cid` 是業主在 KKpartners 後台的聯盟代碼，只能包含英數字、`-`、`_`（最長 64 字）。
+- `-landing-url` 必須是 `https://` 且網域為 `kkday.com`（含子網域）；其他網域、`http`、帳密內嵌的網址後端一律回 400 `invalid_kkday`。
+- `-from-price` 選填，參考價文字（例如 `"NT$ 599 起"`，最長 30 字），前台會顯示成價格並註明「參考價，實際價格以 KKday 為準」。價格要業主自己維護，KKday 調價時記得更新。
+- `-cta-label` 建議寫具體的行動，例如「預約九份夜遊」；沒填時預設顯示「查看場次與票價」。
+- 後端會把 `cid` 寫進網址的 `cid` 查詢參數（網址裡原本帶別的 cid 會被改成 `-cid` 的值），前台點擊才會歸因到該業主。
+- `plan update` 改 `-cid` 或 `-landing-url` 時同樣會重新檢查；把分類從 `kkday` 改成別的分類則不再套用這些規則。
+- 前台顯示的位置由所屬活動的投放頁面（`placement`）決定，跟一般方案相同，活動與方案都要是上架狀態才會出現。
 
 ### 2. detail 欄位的正確格式
 

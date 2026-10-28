@@ -9,7 +9,7 @@ import (
 
 // 業主控制台(web/partner)的建置產物,embed 進這支 binary、掛在 /partner/
 // 底下,與 /partner/api/*(partnerconsole)同一台主機、同一個網域,業主與
-// partner-cli 都用主站網址即可,不需要另外部署 cmd/partnerserver。目錄取名
+// partner-cli 都用主站網址即可。目錄取名
 // webpartner,避免跟 web/dist、webadmin/dist 的 go:embed 撞路徑。
 //
 // 邏輯複製自 static_admin.go 的 adminStaticHandler,只是前綴換成 /partner/。

@@ -24,7 +24,7 @@ func cmdLogin(args []string) {
 	web := fs.Bool("web", false, "用瀏覽器核准登入(不需要在終端機輸入密碼;未給 -email/-password 時預設)")
 	email := fs.String("email", "", "業主的 Tripace 帳號 email(帳密登入用)")
 	password := fs.String("password", "", "密碼(帳密登入用)")
-	apiURLFlag := fs.String("api", "http://localhost:8082", "partnerserver URL(之後指令操作的對象)")
+	apiURLFlag := fs.String("api", "https://tripace.io", "業主控制台 URL(之後指令操作的對象;本機開發請改 http://localhost:8080)")
 	mainAPIFlag := fs.String("main-api", "", "主站 server URL(登入端點所在,留空時等於 -api,正式環境同源部署時適用)")
 	consoleFlag := fs.String("console", "", "核准頁面所在的前端 origin(僅本機開發前後端不同 origin 時需要,留空時等於 -main-api)")
 	_ = fs.Parse(args)
@@ -58,7 +58,7 @@ func cmdLogin(args []string) {
 		token = t
 	}
 
-	// token 存在 -api(partnerserver)底下,之後 campaign/plan 指令讀同一個 key。
+	// token 存在 -api(業主控制台)底下,之後 campaign/plan 指令讀同一個 key。
 	if err := saveToken(*apiURLFlag, token); err != nil {
 		fatal("login: 儲存 token 失敗: %v", err)
 	}

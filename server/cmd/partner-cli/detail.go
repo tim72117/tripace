@@ -43,6 +43,8 @@ type detailFlags struct {
 	desc          *string
 	ctaLabel      *string
 	landingURL    *string
+	cid           *string
+	fromPrice     *string
 }
 
 func registerDetailFlags(fs *flag.FlagSet) *detailFlags {
@@ -56,10 +58,12 @@ func registerDetailFlags(fs *flag.FlagSet) *detailFlags {
 	d.desc = fs.String("desc", "", "說明文字")
 	d.ctaLabel = fs.String("cta-label", "", "按鈕文字")
 	d.landingURL = fs.String("landing-url", "", "按鈕連結(沒有連結前台就不顯示按鈕)")
+	d.fromPrice = fs.String("from-price", "", "參考價,例如 \"NT$ 599 起\"(KKday 方案卡片上的價格錨點,前台會註明以 KKday 為準,最長 30 字)")
+	d.cid = fs.String("cid", "", "KKday 聯盟代碼(category 為 kkday 時必填;會寫進 -landing-url,網址必須是 https 的 kkday.com)")
 	return d
 }
 
-var detailFlagNames = []string{"detail", "detail-file", "departure", "highlight", "days", "original-price", "desc", "cta-label", "landing-url"}
+var detailFlagNames = []string{"detail", "detail-file", "departure", "highlight", "days", "original-price", "desc", "cta-label", "landing-url", "cid", "from-price"}
 
 func (d *detailFlags) any(visited map[string]bool) bool {
 	for _, n := range detailFlagNames {
@@ -130,6 +134,12 @@ func (d *detailFlags) build(base string, visited map[string]bool, stdin io.Reade
 	if visited["landing-url"] {
 		setOrDelete(m, "landingUrl", *d.landingURL)
 	}
+	if visited["from-price"] {
+		setOrDelete(m, "fromPrice", *d.fromPrice)
+	}
+	if visited["cid"] {
+		setOrDelete(m, "cid", *d.cid)
+	}
 
 	warnings, err := validateDetail(m)
 	if err != nil {
@@ -191,7 +201,7 @@ func readDetailFile(path string, stdin io.Reader) (string, error) {
 
 var knownDetailKeys = map[string]bool{
 	"departures": true, "days": true, "originalPrice": true,
-	"highlights": true, "desc": true, "ctaLabel": true, "landingUrl": true,
+	"highlights": true, "desc": true, "ctaLabel": true, "landingUrl": true, "cid": true, "fromPrice": true,
 }
 
 func validateDetail(m map[string]any) (warnings []string, err error) {
@@ -204,7 +214,7 @@ func validateDetail(m map[string]any) (warnings []string, err error) {
 	for _, k := range keys {
 		v := m[k]
 		if !knownDetailKeys[k] {
-			warnings = append(warnings, fmt.Sprintf("未知欄位 %q,前台不會顯示(可用欄位:departures/days/originalPrice/highlights/desc/ctaLabel/landingUrl)", k))
+			warnings = append(warnings, fmt.Sprintf("未知欄位 %q,前台不會顯示(可用欄位:departures/days/originalPrice/highlights/desc/ctaLabel/landingUrl/cid/fromPrice)", k))
 			continue
 		}
 		if k != "departures" {

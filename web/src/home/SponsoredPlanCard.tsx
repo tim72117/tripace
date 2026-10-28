@@ -51,6 +51,39 @@ interface PlanDetail {
   desc: string
   ctaLabel: string
   landingUrl: string
+  cid: string
+  fromPrice: string // KKday 方案的參考價(例如 "NT$ 599 起"),業主自填
+}
+
+// KKday 聯盟方案(category === 'kkday'):業主在控制台設定自己的 cid 與商品頁
+// 網址,後端寫入時檢查網域並把 cid 寫進連結。這裡輸出前再檢查一次網域
+// (只允許 https 的 kkday.com),並補上 ud2=投放頁面供 KKpartners 後台區分
+// 版位;網址不合法就不渲染按鈕。
+export const KKDAY_CATEGORY = 'kkday'
+
+// httpHref——一般方案的連結:只放行 http(s)。後端寫入時也會擋(adlink.CheckLandingURL),
+// 這裡是最後一道:連結會直接進 <a href>,javascript:/data: 等協定點擊時會在主站來源執行。
+export function httpHref(landingUrl: string): string | null {
+  try {
+    const u = new URL(landingUrl)
+    if ((u.protocol !== 'https:' && u.protocol !== 'http:') || u.username || u.password) return null
+    return u.toString()
+  } catch {
+    return null
+  }
+}
+
+export function kkdayHref(landingUrl: string, placement: string): string | null {
+  try {
+    const u = new URL(landingUrl)
+    const host = u.hostname.toLowerCase()
+    if (u.protocol !== 'https:' || u.username || u.password) return null
+    if (host !== 'kkday.com' && !host.endsWith('.kkday.com')) return null
+    if (!u.searchParams.has('ud2')) u.searchParams.set('ud2', placement)
+    return u.toString()
+  } catch {
+    return null
+  }
 }
 
 // parsePlanDetail——跟 web/partner/src/App.tsx 的同名函式邏輯一致
@@ -60,7 +93,7 @@ interface PlanDetail {
 // 見 web/admin 先例的既有模式),各自維護一份小型解析函式的重複維護
 // 成本遠低於為此新增一個跨專案共用 package。
 function parsePlanDetail(raw: string): PlanDetail {
-  const empty: PlanDetail = { departures: [], days: '', originalPrice: '', highlights: '', desc: '', ctaLabel: '', landingUrl: '' }
+  const empty: PlanDetail = { departures: [], days: '', originalPrice: '', highlights: '', desc: '', ctaLabel: '', landingUrl: '', cid: '', fromPrice: '' }
   if (!raw) return empty
   try {
     const obj = JSON.parse(raw) as Partial<PlanDetail> & {
@@ -80,38 +113,64 @@ function parsePlanDetail(raw: string): PlanDetail {
       desc: obj.desc ?? '',
       ctaLabel: obj.ctaLabel ?? '',
       landingUrl: obj.landingUrl ?? '',
+      cid: obj.cid ?? '',
+      fromPrice: obj.fromPrice ?? '',
     }
   } catch {
     return empty
   }
 }
 
-export function SponsoredPlanCard({ placement }: { placement: string }) {
-  const [plan, setPlan] = useState<PublicAdPlan | null>(null)
+async function fetchFirstPlan(placement: string): Promise<PublicAdPlan | null> {
+  const r = await fetch(`${BASE_URL}/public/ad-plans?placement=${encodeURIComponent(placement)}`)
+  if (!r.ok) return null
+  const data = (await r.json()) as PublicAdPlansResponse
+  // 目前只取第一個活動的第一個方案渲染(見後端 ad_plans_public.go
+  // 的完整說明:回應形狀保留分組結構供之後擴充多活動輪播,這裡
+  // 先用最單純的「有就顯示第一筆」)。
+  return data.campaigns[0]?.plans[0] ?? null
+}
+
+// fallbackPlacement——placement 沒有任何已發布方案時改查這個版位(例如行程頁側欄:
+// 先查該行程專屬的 itinerary-<id>,沒有再用全行程共用的 itinerary-sidebar)。
+// 實際顯示的版位用在點擊事件的 placement 欄位,方便分辨流量來自專屬還是預設版位。
+//
+// variant——'compact' 給窄欄位(例如行程頁左側欄)用:取消置中與 720px 寬度,
+// 配色改跟著頁面的主題 token,見 SponsoredPlanCard.css 檔尾。
+export function SponsoredPlanCard({
+  placement,
+  fallbackPlacement,
+  variant = 'default',
+}: {
+  placement: string
+  fallbackPlacement?: string
+  variant?: 'default' | 'compact'
+}) {
+  const [shown, setShown] = useState<{ plan: PublicAdPlan; placement: string } | null>(null)
 
   useEffect(() => {
     let cancelled = false
-    fetch(`${BASE_URL}/public/ad-plans?placement=${encodeURIComponent(placement)}`)
-      .then((r) => (r.ok ? (r.json() as Promise<PublicAdPlansResponse>) : null))
-      .then((data) => {
-        if (cancelled || !data) return
-        // 目前只取第一個活動的第一個方案渲染(見後端 ad_plans_public.go
-        // 的完整說明:回應形狀保留分組結構供之後擴充多活動輪播,這裡
-        // 先用最單純的「有就顯示第一筆」)。
-        const first = data.campaigns[0]?.plans[0]
-        setPlan(first ?? null)
-      })
-      .catch(() => {
-        // 廣告版位載入失敗不影響頁面其他內容,靜默略過即可——不是
-        // 使用者會在意的錯誤,也沒有重試的必要(下次造訪頁面會重新
-        // fetch)。
-      })
+    setShown(null)
+    ;(async () => {
+      let plan = await fetchFirstPlan(placement)
+      let usedPlacement = placement
+      if (!plan && fallbackPlacement) {
+        plan = await fetchFirstPlan(fallbackPlacement)
+        usedPlacement = fallbackPlacement
+      }
+      if (!cancelled && plan) setShown({ plan, placement: usedPlacement })
+    })().catch(() => {
+      // 廣告版位載入失敗不影響頁面其他內容,靜默略過即可——不是
+      // 使用者會在意的錯誤,也沒有重試的必要(下次造訪頁面會重新
+      // fetch)。
+    })
     return () => {
       cancelled = true
     }
-  }, [placement])
+  }, [placement, fallbackPlacement])
 
-  if (!plan) return null
+  if (!shown) return null
+  const { plan, placement: usedPlacement } = shown
 
   const detail = parsePlanDetail(plan.detail)
   const highlightLines = detail.highlights
@@ -121,13 +180,17 @@ export function SponsoredPlanCard({ placement }: { placement: string }) {
 
   const { id: planId, campaignID } = plan
 
+  const isKKday = plan.category === KKDAY_CATEGORY
+  const href = isKKday ? kkdayHref(detail.landingUrl, usedPlacement) : httpHref(detail.landingUrl)
+
   function handleClick() {
-    trackEvent('sponsored_plan_click', { placement, campaignId: campaignID, planId })
+    trackEvent('sponsored_plan_click', { placement: usedPlacement, campaignId: campaignID, planId })
+    if (isKKday) trackEvent('affiliate_link_click', { page: usedPlacement, partner: 'kkday', cid: detail.cid })
   }
 
   return (
-    <section className="sponsored-plan-card">
-      <span className="sponsored-plan-eyebrow">合作推薦</span>
+    <section className={variant === 'compact' ? 'sponsored-plan-card sponsored-plan-card--compact' : 'sponsored-plan-card'}>
+      <span className="sponsored-plan-eyebrow">{isKKday ? 'KKday 熱門行程 · 合作推薦' : '合作推薦'}</span>
       <h3 className="sponsored-plan-title">{plan.title}</h3>
 
       {detail.departures.length > 0 && (
@@ -150,6 +213,13 @@ export function SponsoredPlanCard({ placement }: { placement: string }) {
 
       {detail.desc && <p className="sponsored-plan-desc">{detail.desc}</p>}
 
+      {isKKday && detail.fromPrice && (
+        <p className="sponsored-plan-from-price">
+          <strong>{detail.fromPrice}</strong>
+          <small>參考價，實際價格以 KKday 為準</small>
+        </p>
+      )}
+
       {highlightLines.length > 0 && (
         <ul className="sponsored-plan-highlights">
           {highlightLines.map((line, i) => (
@@ -158,15 +228,15 @@ export function SponsoredPlanCard({ placement }: { placement: string }) {
         </ul>
       )}
 
-      {detail.landingUrl && (
+      {href && (
         <a
           className="sponsored-plan-cta"
-          href={detail.landingUrl}
+          href={href}
           target="_blank"
-          rel="noopener noreferrer"
+          rel={isKKday ? 'sponsored noopener noreferrer' : 'noopener noreferrer'}
           onClick={handleClick}
         >
-          {detail.ctaLabel || '了解更多'}
+          {detail.ctaLabel || (isKKday ? '查看場次與票價' : '了解更多')}
         </a>
       )}
     </section>

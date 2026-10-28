@@ -65,7 +65,7 @@ combination — `SKILL.md`'s own fallback instructions cover that case.
 
 ## Who this is for
 
-`partner-cli` only talks to `partnerserver`'s `/partner/api/*` endpoints
+`partner-cli` only talks to the main server's `/partner/api/*` endpoints (default `https://tripace.io`)
 — it authenticates with a regular Tripace user account that has been
 granted partner status (via `tripace-cli partner-grant`, an internal-only
 operation with no self-serve flow yet). It cannot do anything an

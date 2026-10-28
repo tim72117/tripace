@@ -23,6 +23,7 @@ package api
 import (
 	"net/http"
 
+	"github.com/tim72117/tripace/internal/adlink"
 	"github.com/tim72117/tripace/internal/model"
 )
 
@@ -93,6 +94,15 @@ func (s *Server) handlePublicAdPlans(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusInternalServerError, "query_failed", err.Error())
 			return
 		}
+		// KKday 聯盟方案輸出前再驗一次網域與 cid(寫入時已驗過,這裡擋舊資料
+		// 或直接改資料庫的情況)。
+		safe := plans[:0]
+		for _, p := range plans {
+			if adlink.SafeForPublic(p.Category, p.Detail) {
+				safe = append(safe, p)
+			}
+		}
+		plans = safe
 		if len(plans) == 0 {
 			// 活動是 active,但底下沒有任何已發布的方案——對前台來說
 			// 等同沒有東西可顯示,略過這個活動而非回傳一個空方案陣列

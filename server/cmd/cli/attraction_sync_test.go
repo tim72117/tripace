@@ -45,11 +45,11 @@ func TestCmdAttractionSyncSetup(t *testing.T) {
 	c := &fakeSyncClient{fakeClient: fakeClient{result: map[string]any{"ok": true}}}
 
 	captureOutput(t, func() {
-		cmdAttractionSyncSetup(c, []string{"-target", "https://tripace.shuttle.tools"})
+		cmdAttractionSyncSetup(c, []string{"-target", "https://tripace.io"})
 	})
 
-	if c.syncSetupTarget != "https://tripace.shuttle.tools" {
-		t.Errorf("attractionSyncSetup 收到 target = %q，預期 %q", c.syncSetupTarget, "https://tripace.shuttle.tools")
+	if c.syncSetupTarget != "https://tripace.io" {
+		t.Errorf("attractionSyncSetup 收到 target = %q，預期 %q", c.syncSetupTarget, "https://tripace.io")
 	}
 }
 

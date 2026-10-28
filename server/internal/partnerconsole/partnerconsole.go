@@ -17,16 +17,18 @@
 //
 // 比照 adminconsole 的既有結構(獨立套件、只依賴 internal/auth、
 // internal/model、internal/store,不依賴 internal/api/internal/llm 等
-// 主業務套件),讓 cmd/partnerserver 能獨立編譯成一支不含主業務依賴的
+// 主業務套件),讓這個套件能獨立編譯、測試而不含主業務依賴的
 // 精簡 binary。
 package partnerconsole
 
 import (
 	"encoding/json"
 	"net/http"
+	"regexp"
 	"strings"
 	"unicode/utf8"
 
+	"github.com/tim72117/tripace/internal/adlink"
 	"github.com/tim72117/tripace/internal/auth"
 	"github.com/tim72117/tripace/internal/model"
 	"github.com/tim72117/tripace/internal/store"
@@ -132,6 +134,29 @@ var validPlacements = []model.Placement{
 	{Value: "jiufen", Label: "九份"},
 	{Value: "tainan-anping", Label: "台南安平"},
 	{Value: "tainan-chikan", Label: "台南赤崁"},
+	{Value: "itinerary-sidebar", Label: "行程頁側欄（所有行程的預設）"},
+}
+
+// 行程頁側欄可以依行程分別投放:版位 "itinerary-<行程 slug>" 只在該行程頁顯示,
+// 沒有專屬方案的行程退回 "itinerary-sidebar"(見 web/src/itineraries/ItinerarySidebar.tsx)。
+// slug 是動態的,所以不逐一寫進 validPlacements:placements 端點會把資料庫裡已發布的
+// 行程自動列進去,靜態範例行程(只存在於前端)可以直接用 "itinerary-<id>" 手動指定。
+const itineraryPlacementPrefix = "itinerary-"
+
+var itinerarySlugPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
+
+// validPlacementValue 空字串(尚未指定)、已知頁面、或格式正確的行程版位才算合法,
+// 避免打錯字的版位永遠不會被前台查到。
+func validPlacementValue(v string) bool {
+	if v == "" {
+		return true
+	}
+	for _, p := range validPlacements {
+		if p.Value == v {
+			return true
+		}
+	}
+	return strings.HasPrefix(v, itineraryPlacementPrefix) && itinerarySlugPattern.MatchString(strings.TrimPrefix(v, itineraryPlacementPrefix))
 }
 
 type placementsResponse struct {
@@ -139,7 +164,24 @@ type placementsResponse struct {
 }
 
 func (h *Handler) listPlacements(w http.ResponseWriter, r *http.Request, p *Partner) {
-	writeJSON(w, http.StatusOK, placementsResponse{Placements: validPlacements})
+	out := append([]model.Placement(nil), validPlacements...)
+	// 資料庫裡已發布的行程各自成為一個版位(標題取自行程內容)。查詢失敗不影響靜態清單。
+	if pages, err := h.Store.ListItineraryPages(); err == nil {
+		for _, pg := range pages {
+			if pg.Status != "published" || !itinerarySlugPattern.MatchString(pg.Slug) {
+				continue
+			}
+			label := pg.Slug
+			var c struct {
+				Title string `json:"title"`
+			}
+			if json.Unmarshal([]byte(pg.Content), &c) == nil && c.Title != "" {
+				label = c.Title
+			}
+			out = append(out, model.Placement{Value: itineraryPlacementPrefix + pg.Slug, Label: "行程頁側欄：" + label})
+		}
+	}
+	writeJSON(w, http.StatusOK, placementsResponse{Placements: out})
 }
 
 // --- campaigns -----------------------------------------------------------
@@ -174,6 +216,10 @@ func (h *Handler) createCampaign(w http.ResponseWriter, r *http.Request, p *Part
 		writeErr(w, http.StatusBadRequest, "invalid_text", badTextMessage)
 		return
 	}
+	if !validPlacementValue(body.Placement) {
+		writeErr(w, http.StatusBadRequest, "invalid_placement", "placement 不是合法的投放頁面(用 GET /partner/api/placements 查詢;行程頁側欄的格式是 itinerary-<行程 slug>)")
+		return
+	}
 	c, err := h.Store.CreateCampaign(p.ID, body.Name, body.Placement, body.StartDate, body.EndDate)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "internal", "failed to create campaign")
@@ -201,6 +247,10 @@ func (h *Handler) updateCampaign(w http.ResponseWriter, r *http.Request, p *Part
 	}
 	if hasBadText(body.Name, body.Placement, body.StartDate, body.EndDate) {
 		writeErr(w, http.StatusBadRequest, "invalid_text", badTextMessage)
+		return
+	}
+	if !validPlacementValue(body.Placement) {
+		writeErr(w, http.StatusBadRequest, "invalid_placement", "placement 不是合法的投放頁面(用 GET /partner/api/placements 查詢;行程頁側欄的格式是 itinerary-<行程 slug>)")
 		return
 	}
 	if err := h.Store.UpdateCampaignForPartner(p.ID, id, body.Name, body.Placement, body.StartDate, body.EndDate); err != nil {
@@ -280,12 +330,37 @@ func (h *Handler) createAdPlan(w http.ResponseWriter, r *http.Request, p *Partne
 		writeErr(w, http.StatusBadRequest, "invalid_text", badTextMessage)
 		return
 	}
+	if !h.normalizeKKday(w, &body) {
+		return
+	}
 	plan, err := h.Store.CreateAdPlanForPartner(p.ID, campaignID, body.Category, body.Title, body.Detail)
 	if err != nil {
 		writeErr(w, http.StatusNotFound, "not_found", "campaign not found")
 		return
 	}
 	writeJSON(w, http.StatusCreated, plan)
+}
+
+// normalizeKKday 對 category=kkday 的方案檢查 cid 與 kkday.com 網域,並把 cid
+// 寫進 landingUrl(見 adlink.NormalizeKKdayDetail);其他分類只檢查連結協定。
+// 不通過時已回 400(invalid_kkday / invalid_url),呼叫端直接結束。
+func (h *Handler) normalizeKKday(w http.ResponseWriter, body *createAdPlanRequest) bool {
+	if !adlink.IsKKdayCategory(body.Category) {
+		// 其他分類的連結不限網域,但只允許 http(s):前台把它直接放進 <a href>。
+		if err := adlink.CheckLandingURL(body.Detail); err != nil {
+			writeErr(w, http.StatusBadRequest, "invalid_url", err.Error())
+			return false
+		}
+		return true
+	}
+	body.Category = adlink.CategoryKKday
+	detail, err := adlink.NormalizeKKdayDetail(body.Detail)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid_kkday", err.Error())
+		return false
+	}
+	body.Detail = detail
+	return true
 }
 
 func (h *Handler) getAdPlan(w http.ResponseWriter, r *http.Request, p *Partner) {
@@ -306,6 +381,9 @@ func (h *Handler) updateAdPlan(w http.ResponseWriter, r *http.Request, p *Partne
 	}
 	if hasBadText(body.Category, body.Title, body.Detail) {
 		writeErr(w, http.StatusBadRequest, "invalid_text", badTextMessage)
+		return
+	}
+	if !h.normalizeKKday(w, &body) {
 		return
 	}
 	if err := h.Store.UpdateAdPlanForPartner(p.ID, id, body.Category, body.Title, body.Detail); err != nil {

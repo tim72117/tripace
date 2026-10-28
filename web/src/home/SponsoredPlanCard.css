@@ -136,6 +136,22 @@
   opacity: 0.85;
 }
 
+.sponsored-plan-from-price {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.6rem;
+}
+.sponsored-plan-from-price strong {
+  font-size: 1.25rem;
+  font-weight: 800;
+}
+.sponsored-plan-from-price small {
+  font-size: 0.72rem;
+  opacity: 0.55;
+}
+
 .sponsored-plan-highlights {
   list-style: none;
   margin: 0;
@@ -207,3 +223,36 @@
   }
 }
 
+/* compact——窄欄位(行程頁側欄)用的變體。外層頁面用 --ios-* / --color-* 主題 token
+   (深淺色跟著 app-theme-root),所以這裡不沿用上面寫死的色票,改吃 token。
+   選擇器刻意帶 :root 讓權重不輸上面的深色模式規則(放在檔尾,同權重後者勝)。 */
+:root .sponsored-plan-card.sponsored-plan-card--compact {
+  max-width: none;
+  margin: 0;
+  padding: 0.85rem 0.9rem;
+  border-radius: 12px;
+  border-color: var(--ios-sep);
+  background: var(--ios-card);
+  color: var(--color-dark);
+  gap: 0.55rem;
+}
+.sponsored-plan-card--compact .sponsored-plan-title {
+  font-size: 0.95rem;
+}
+.sponsored-plan-card--compact .sponsored-plan-desc {
+  font-size: 0.82rem;
+}
+.sponsored-plan-card--compact .sponsored-plan-from-price strong {
+  font-size: 1.05rem;
+}
+:root .sponsored-plan-card--compact .sponsored-plan-cta {
+  align-self: stretch;
+  justify-content: center;
+  border-color: var(--ios-sep);
+  background: transparent;
+  color: var(--color-dark);
+}
+:root .sponsored-plan-card--compact .sponsored-plan-cta:hover {
+  border-color: var(--ios-blue);
+  background: transparent;
+}

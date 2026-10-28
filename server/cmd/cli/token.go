@@ -4,7 +4,7 @@ package main
 // 純文字檔,仿照 onagent cmd/onagent/main.go 的 saveToken/loadToken 寫法。
 //
 // 2026-10 修正:token 檔名依 apiBase(-api 旗標指向的 server,例如
-// http://localhost:8080 或 https://tripace.shuttle.tools)分開存放,不再
+// http://localhost:8080 或 https://tripace.io)分開存放,不再
 // 全部共用同一個固定檔名——原本不分 host 時,login 連正式機換到的 token
 // 會直接覆蓋掉本機開發環境的登入狀態(反之亦然),使用者需要在本機/正式機
 // 之間切換操作時,每次都要重新登入前一個環境,且容易在不自覺的情況下拿著

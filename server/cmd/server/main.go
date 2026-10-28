@@ -486,7 +486,7 @@ func main() {
 	}
 
 	// 廣告業主控制台(/partner/api/* 與 /partner/ 前端)直接併入主服務,與
-	// partner-cli、業主網頁共用主站網域;不需要另外部署 cmd/partnerserver。
+	// partner-cli、業主網頁共用主站網域。
 	// 身分驗證用同一把 signer(一般使用者 JWT),差別只在資料庫有沒有對應的
 	// 業主資料(見 partnerconsole 套件說明)。CORS 政策與 /admin/ 相同。
 	partnerMux := http.NewServeMux()

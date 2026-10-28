@@ -77,18 +77,10 @@ export interface AdPlan {
 // where this SPA is embedded same-origin under /partner).
 export const BASE: string = import.meta.env.VITE_PARTNER_API_URL ?? window.location.origin
 
-// MAIN_BASE — where POST /v1/auth/login lives. In production this is the
-// SAME origin as BASE (partnerserver and the main server both sit behind
-// the same domain's routing, or more precisely: login always happens on
-// the main site first, and this console just consumes the resulting
-// JWT — see api.login's doc comment). Locally, though, cmd/server and
-// cmd/partnerserver are two separate processes on two different ports
-// (8080 vs 8082), and only cmd/server exposes /v1/auth/login — BASE
-// alone can't be used for both the login call and the /partner/api/*
-// calls in local dev. VITE_MAIN_API_URL lets local dev point login at
-// the main server while BASE keeps pointing /partner/api/* calls at
-// partnerserver; it falls back to BASE itself (correct in production,
-// and correct for anyone running a single combined local backend).
+// MAIN_BASE — where POST /v1/auth/login lives. The partner API is part of the
+// main server (same origin in production and in a single local backend), so
+// this falls back to BASE; VITE_MAIN_API_URL only matters if login is served
+// from a different origin than /partner/api/*.
 const MAIN_BASE: string = import.meta.env.VITE_MAIN_API_URL ?? BASE
 
 export class ApiError extends Error {

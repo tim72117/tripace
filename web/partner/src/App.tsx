@@ -437,6 +437,22 @@ interface PlanDetail {
   desc: string
   ctaLabel: string
   landingUrl: string
+  fromPrice: string // KKday 方案的參考價,前台顯示為價格錨點
+  cid: string // KKday 聯盟代碼(category 為 kkday 時必填,後端會寫進 landingUrl)
+}
+
+// 方案分類。kkday 是聯盟連結方案:業主填自己的 cid 與 kkday.com 商品頁網址,
+// 後端檢查網域並把 cid 寫進連結(見 server/internal/adlink),前台用同一張
+// SponsoredPlanCard 顯示。
+const KKDAY_CATEGORY = 'kkday'
+const CATEGORY_OPTIONS = [
+  { value: '', label: '（未分類）' },
+  { value: 'group_tour', label: '旅行社團體行程' },
+  { value: KKDAY_CATEGORY, label: 'KKday 聯盟連結' },
+]
+
+function categoryLabel(category: string): string {
+  return CATEGORY_OPTIONS.find((o) => o.value === category)?.label ?? (category || '未分類')
 }
 
 function emptyPlanDetail(): PlanDetail {
@@ -448,6 +464,8 @@ function emptyPlanDetail(): PlanDetail {
     desc: '',
     ctaLabel: '',
     landingUrl: '',
+    cid: '',
+    fromPrice: '',
   }
 }
 
@@ -483,6 +501,8 @@ function parsePlanDetail(raw: string): PlanDetail {
       desc: obj.desc ?? '',
       ctaLabel: obj.ctaLabel ?? '',
       landingUrl: obj.landingUrl ?? '',
+      cid: obj.cid ?? '',
+      fromPrice: obj.fromPrice ?? '',
     }
   } catch {
     return empty
@@ -501,8 +521,21 @@ function planDetailHasContent(detail: PlanDetail): boolean {
     detail.highlights !== '' ||
     detail.desc !== '' ||
     detail.ctaLabel !== '' ||
-    detail.landingUrl !== ''
+    detail.landingUrl !== '' ||
+    detail.cid !== '' ||
+    detail.fromPrice !== ''
   )
+}
+
+// safeHttpUrl——預覽用的連結只放行 http(s),避免 javascript: 等協定在後台頁面點擊時執行
+// (後端寫入時也會擋,見 server adlink.CheckLandingURL;這裡處理舊資料與直接改庫的情況)。
+function safeHttpUrl(raw: string): string | null {
+  try {
+    const u = new URL(raw)
+    return (u.protocol === 'https:' || u.protocol === 'http:') && !u.username && !u.password ? u.toString() : null
+  } catch {
+    return null
+  }
 }
 
 function AdPlanRow({ plan, onChanged }: { plan: AdPlan; onChanged: () => void }) {
@@ -511,6 +544,7 @@ function AdPlanRow({ plan, onChanged }: { plan: AdPlan; onChanged: () => void })
   const [expanded, setExpanded] = useState(false)
   const detail = parsePlanDetail(plan.detail)
   const hasDetail = planDetailHasContent(detail)
+  const safeUrl = safeHttpUrl(detail.landingUrl)
   const highlightLines = detail.highlights.split('\n').map((l) => l.trim()).filter(Boolean)
 
   async function toggleStatus() {
@@ -546,7 +580,7 @@ function AdPlanRow({ plan, onChanged }: { plan: AdPlan; onChanged: () => void })
           <span>
             <span className="row-title">{plan.title}</span>
             <span className="row-sub" style={{ marginLeft: '0.5rem', display: 'inline' }}>
-              {plan.category || '未分類'}
+              {categoryLabel(plan.category)}
             </span>
           </span>
         </button>
@@ -594,12 +628,14 @@ function AdPlanRow({ plan, onChanged }: { plan: AdPlan; onChanged: () => void })
 
           {(detail.ctaLabel || detail.landingUrl) && (
             <div className="plan-cta-row">
-              {detail.landingUrl ? (
-                <a className="plan-cta-link" href={detail.landingUrl} target="_blank" rel="noopener noreferrer">
+              {safeUrl ? (
+                <a className="plan-cta-link" href={safeUrl} target="_blank" rel="noopener noreferrer">
                   {detail.ctaLabel || detail.landingUrl}
                 </a>
               ) : (
-                <span className="plan-cta-link plan-cta-link-disabled">{detail.ctaLabel}</span>
+                <span className="plan-cta-link plan-cta-link-disabled">
+                  {detail.ctaLabel || (detail.landingUrl ? '（連結無效）' : '')}
+                </span>
               )}
             </div>
           )}
@@ -615,6 +651,7 @@ function CreateAdPlanForm({ campaignID, onCreated }: { campaignID: string; onCre
   const [detail, setDetail] = useState<PlanDetail>(emptyPlanDetail)
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const isKKday = category === KKDAY_CATEGORY
 
   function updateDetail<K extends keyof PlanDetail>(key: K, value: PlanDetail[K]) {
     setDetail((d) => ({ ...d, [key]: value }))
@@ -640,7 +677,8 @@ function CreateAdPlanForm({ campaignID, onCreated }: { campaignID: string; onCre
     setError(null)
     setSubmitting(true)
     try {
-      await api.createAdPlan(campaignID, { title, category, detail: serializePlanDetail(detail) })
+      const payload = isKKday ? { ...emptyPlanDetail(), desc: detail.desc, ctaLabel: detail.ctaLabel, landingUrl: detail.landingUrl, cid: detail.cid, fromPrice: detail.fromPrice } : { ...detail, cid: '' }
+      await api.createAdPlan(campaignID, { title, category, detail: serializePlanDetail(payload) })
       setTitle('')
       setCategory('')
       setDetail(emptyPlanDetail())
@@ -660,15 +698,78 @@ function CreateAdPlanForm({ campaignID, onCreated }: { campaignID: string; onCre
       </div>
       <div className="field-row">
         <div className="field">
-          <label htmlFor="plan-category">分類（選填，例如 display / deeplink / group_tour）</label>
-          <input id="plan-category" value={category} onChange={(e) => setCategory(e.target.value)} />
+          <label htmlFor="plan-category" id="plan-category-label">
+            分類
+          </label>
+          <Select
+            id="plan-category"
+            labelId="plan-category-label"
+            value={category}
+            onChange={setCategory}
+            options={CATEGORY_OPTIONS}
+          />
         </div>
-        <div className="field" style={{ flex: '0 0 6rem' }}>
-          <label htmlFor="plan-days">天數（選填）</label>
-          <input id="plan-days" value={detail.days} onChange={(e) => updateDetail('days', e.target.value)} placeholder="例如：4" />
-        </div>
+        {!isKKday && (
+          <div className="field" style={{ flex: '0 0 6rem' }}>
+            <label htmlFor="plan-days">天數（選填）</label>
+            <input id="plan-days" value={detail.days} onChange={(e) => updateDetail('days', e.target.value)} placeholder="例如：4" />
+          </div>
+        )}
       </div>
 
+      {isKKday && (
+        <div className="field-row">
+          <div className="field" style={{ flex: '0 0 12rem' }}>
+            <label htmlFor="plan-cid">KKday 聯盟代碼 cid</label>
+            <input
+              id="plan-cid"
+              value={detail.cid}
+              onChange={(e) => updateDetail('cid', e.target.value.trim())}
+              placeholder="例如：tripace-27468"
+              pattern="[A-Za-z0-9_\-]{1,64}"
+              title="只能包含英數字、- 與 _"
+              required
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="plan-kkday-url">KKday 商品網址</label>
+            <input
+              id="plan-kkday-url"
+              type="url"
+              value={detail.landingUrl}
+              onChange={(e) => updateDetail('landingUrl', e.target.value)}
+              placeholder="https://www.kkday.com/zh-tw/product/..."
+              required
+            />
+          </div>
+        </div>
+      )}
+      {isKKday && (
+        <div className="field-row">
+          <div className="field" style={{ flex: '0 0 12rem' }}>
+            <label htmlFor="plan-from-price">參考價（選填）</label>
+            <input
+              id="plan-from-price"
+              value={detail.fromPrice}
+              onChange={(e) => updateDetail('fromPrice', e.target.value)}
+              placeholder="例如：NT$ 599 起"
+              maxLength={30}
+            />
+          </div>
+          <div className="field">
+            <label htmlFor="plan-kkday-cta">按鈕文案（選填）</label>
+            <input
+              id="plan-kkday-cta"
+              value={detail.ctaLabel}
+              onChange={(e) => updateDetail('ctaLabel', e.target.value)}
+              placeholder="例如：預約九份夜遊（預設：查看場次與票價）"
+            />
+          </div>
+        </div>
+      )}
+
+      {!isKKday && (
+        <>
       {/* 出發日梯次——同一條行程可以有多個出發日,各自獨立報價(見
           PlanDetail.departures 的完整說明,對應使用者分享的真實旅行社
           出發日曆截圖)。 */}
@@ -731,22 +832,26 @@ function CreateAdPlanForm({ campaignID, onCreated }: { campaignID: string; onCre
           placeholder={'花海美景｜大阪璀璨花海\n嵐山觀光｜嵐山小火車\n古都名寺｜清水寺＋京都一晚'}
         />
       </div>
-      <div className="field-row">
-        <div className="field">
-          <label htmlFor="plan-cta">按鈕文案（選填）</label>
-          <input id="plan-cta" value={detail.ctaLabel} onChange={(e) => updateDetail('ctaLabel', e.target.value)} placeholder="例如：立即報名" />
+        </>
+      )}
+      {!isKKday && (
+        <div className="field-row">
+          <div className="field">
+            <label htmlFor="plan-cta">按鈕文案（選填）</label>
+            <input id="plan-cta" value={detail.ctaLabel} onChange={(e) => updateDetail('ctaLabel', e.target.value)} placeholder="例如：立即報名" />
+          </div>
+          <div className="field">
+            <label htmlFor="plan-url">連結網址（選填）</label>
+            <input
+              id="plan-url"
+              type="url"
+              value={detail.landingUrl}
+              onChange={(e) => updateDetail('landingUrl', e.target.value)}
+              placeholder="https://..."
+            />
+          </div>
         </div>
-        <div className="field">
-          <label htmlFor="plan-url">連結網址（選填）</label>
-          <input
-            id="plan-url"
-            type="url"
-            value={detail.landingUrl}
-            onChange={(e) => updateDetail('landingUrl', e.target.value)}
-            placeholder="https://..."
-          />
-        </div>
-      </div>
+      )}
       {error && <p className="error-text">{error}</p>}
       <button type="submit" disabled={submitting}>
         {submitting ? '建立中…' : '建立方案'}

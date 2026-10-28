@@ -2,6 +2,31 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.47.0 — 2026-10-28
+
+這一版把廣告業主控制台併入主服務（與主站同網域 `tripace.io`），業主可投放 KKday 聯盟方案，行程頁側欄可依行程投放，並整理 partner 套件與發布流程。
+
+### 新增
+
+- **業主控制台併入主服務**（`server/cmd/server/main.go`、`static_partner.go`、`Dockerfile`）：`cmd/server` 直接掛載 `/partner/api/*`（`partnerconsole`）與 `/partner/` 業主前端（`web/partner` 建置後 embed 進 `cmd/server/webpartner/dist`），沿用主站同一把 JWT signer，CORS 政策與 `/admin/` 相同。`partner-cli` 與業主網頁用 `https://tripace.io` 即可。Dockerfile 新增 `partner-build` 階段。
+- **KKday 聯盟方案**（`server/internal/adlink`、`partnerconsole`、`web/partner`、`web/src/home/SponsoredPlanCard`）：方案 category 為 `kkday` 時，業主須填 `cid` 與 kkday.com 的 `landingUrl`，後端檢查網域並把 cid 寫進網址；可填參考價（`fromPrice`，最長 30 字）；前台點擊歸因到該業主。公開端點輸出前再驗一次。
+- **行程頁側欄依行程投放**（`ItinerarySidebar`、`partnerconsole` 版位驗證）：版位 `itinerary-<行程 slug>` 只在該行程頁顯示，沒有時退回 `itinerary-sidebar`；`/partner/api/placements` 會列出已發布的行程。側欄沒有連結與廣告時，仍會顯示業主投放的卡片。
+- **partner-cli**：新增 `-cid`、`-from-price`、`-activate`、`-publish`、`-quiet`，錯誤訊息可讀化。
+
+### 變更
+
+- **partner-cli 的 `-api` 預設值改為 `https://tripace.io`**（原為 `http://localhost:8082`）。**本機開發需明確帶 `-api http://localhost:8080`；沒帶時會打到正式環境。**
+- **移除獨立的 `cmd/partnerserver` 與 `Dockerfile.partner`**：功能已併入主服務。
+- **所有分類的方案 `landingUrl` 只允許 http(s)**，擋掉 `javascript:` 等協定（儲存型 XSS）；公開端點輸出前同樣過濾。
+- **partner skill 套件移到 `packages/partner-installer/`**（原 `web/partner-installer`），版本 0.0.2；`SKILL.md` 改用 `-api https://tripace.io`、安裝指令改為 `npx @tripace/partner-claude-skill`。
+- **`release-partner-claude-skill.yml` 改為推 `partner-claude-skill-v*` tag 自動發布**（保留手動觸發），並檢查 tag 版本與 `package.json` 一致。
+- 舊網域 `tripace.shuttle.tools` 的殘留引用改為 `tripace.io`（`web/tools/onagent-tools.yaml`、`marketing/tripace/`、註解與測試字串）。
+
+### 部署注意
+
+- 部署後 `tripace.io/partner/api/me` 不帶 token 應回 401（原為 404）。
+- `web/tools/onagent-tools.yaml` 的位址變更僅在檔案內，需另外同步到正式 onagent 平台才會生效。
+
 ## v0.46.0 — 2026-10-28
 
 這一版有四組改動：①`/ai-plan` 播放態與推論態拆成兩個獨立路由（新增 `/ai-plan/live`），備註（note）改成卡片內固定高度橫列，並新增手機版／桌面疊加版的版面骨架除錯疊圖與 AI 工具呼叫紀錄面板；②廣告業主自助控制台與投放系統（新後端服務、新前端、`SponsoredPlanCard`）；③`/island` 重構成場景化（`/island/:sceneId`、探索模式、連續地形）；④草稿清單加入標題與最後編輯時間。**資料庫新增三張表 `partners`、`campaigns`、`ad_plans`（啟動時 AutoMigrate 自動建立，既有表無欄位增刪，不需手動遷移）；環境變數新增 `VITE_FEATURE_ISLAND_SAMPLE`（前端，預設關閉）、`VITE_PARTNER_API_URL`、`VITE_MAIN_API_URL`（`web/partner`）、partnerserver 的 `PORT`、`DATABASE_URL`；localStorage 新增 `tripace_partner_token`（草稿 key `tripace.planTimeline.drafts` 不變、舊資料相容）；LLM 工具、yaml、thought 皆不變（不需重推 onagent）；新的 npm 相依只在 `web/partner`、`web/partner-installer`，主站 `package.json`、`go.mod` 無變動。**

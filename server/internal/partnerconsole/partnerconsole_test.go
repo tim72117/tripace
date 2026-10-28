@@ -29,6 +29,7 @@ type testEnv struct {
 	t      *testing.T
 	mux    *http.ServeMux
 	tokens map[string]string
+	st     *store.Store
 }
 
 func newEnv(t *testing.T, users ...string) *testEnv {
@@ -40,7 +41,7 @@ func newEnv(t *testing.T, users ...string) *testEnv {
 	t.Cleanup(func() { _ = st.Close() })
 
 	signer := auth.NewSigner("test-secret", time.Hour)
-	env := &testEnv{t: t, mux: http.NewServeMux(), tokens: map[string]string{}}
+	env := &testEnv{t: t, mux: http.NewServeMux(), tokens: map[string]string{}, st: st}
 	for _, u := range users {
 		if _, err := st.CreatePartner(u, "業主 "+u); err != nil {
 			t.Fatalf("CreatePartner: %v", err)
@@ -150,5 +151,128 @@ func TestGetAdPlanAndUpdateReturnsFullObject(t *testing.T) {
 		map[string]string{"title": "新標題", "category": "group_tour", "detail": `{"days":"7"}`})
 	if code != http.StatusOK || upd["title"] != "新標題" || upd["detail"] != `{"days":"7"}` || upd["status"] != "draft" {
 		t.Fatalf("PUT plan 應回完整物件: %d %v", code, upd)
+	}
+}
+
+func TestKKdayPlanValidatesDomainAndInjectsCID(t *testing.T) {
+	env := newEnv(t, "usr_a")
+	_, camp := env.do("usr_a", "POST", "/partner/api/campaigns", map[string]string{"name": "活動"})
+	path := "/partner/api/campaigns/" + camp["id"].(string) + "/plans"
+
+	for name, detail := range map[string]string{
+		"缺 cid":   `{"landingUrl":"https://www.kkday.com/zh-tw/product/1"}`,
+		"非 kkday": `{"cid":"abc","landingUrl":"https://example.com/x"}`,
+		"http":    `{"cid":"abc","landingUrl":"http://www.kkday.com/x"}`,
+		"偽裝網域":    `{"cid":"abc","landingUrl":"https://kkday.com.evil.com/x"}`,
+	} {
+		code, res := env.do("usr_a", "POST", path, map[string]string{"title": "t", "category": "kkday", "detail": detail})
+		if code != http.StatusBadRequest || errCode(res) != "invalid_kkday" {
+			t.Fatalf("%s: %d %v,應回 400 invalid_kkday", name, code, res)
+		}
+	}
+	_, plans := env.do("usr_a", "GET", path, nil)
+	if n := len(plans["plans"].([]any)); n != 0 {
+		t.Fatalf("被拒絕的方案不該寫入,現有 %d 筆", n)
+	}
+
+	code, plan := env.do("usr_a", "POST", path, map[string]string{
+		"title": "九份一日遊", "category": "kkday",
+		"detail": `{"cid":"tripace-27468","landingUrl":"https://www.kkday.com/zh-tw/product/2287?cid=other"}`,
+	})
+	if code != http.StatusCreated {
+		t.Fatalf("合法 KKday 方案 = %d %v", code, plan)
+	}
+	var d map[string]string
+	_ = json.Unmarshal([]byte(plan["detail"].(string)), &d)
+	if d["landingUrl"] != "https://www.kkday.com/zh-tw/product/2287?cid=tripace-27468" {
+		t.Fatalf("cid 應寫進網址: %s", d["landingUrl"])
+	}
+
+	// 更新時也要驗證:把網址改成別的網域應被擋下,資料不變。
+	code, res := env.do("usr_a", "PUT", "/partner/api/plans/"+plan["id"].(string), map[string]string{
+		"title": "九份一日遊", "category": "kkday", "detail": `{"cid":"tripace-27468","landingUrl":"https://example.com/x"}`,
+	})
+	if code != http.StatusBadRequest || errCode(res) != "invalid_kkday" {
+		t.Fatalf("更新成非 kkday 網域: %d %v", code, res)
+	}
+}
+
+func TestValidPlacementValue(t *testing.T) {
+	for _, ok := range []string{"", "jiufen", "itinerary-sidebar", "itinerary-jozankei-1day", "itinerary-hokkaido-5day"} {
+		if !validPlacementValue(ok) {
+			t.Errorf("%q 應合法", ok)
+		}
+	}
+	for _, bad := range []string{"jiufen2", "itinerary-", "itinerary-Has Space", "itinerary-UPPER", "itinerary-a/b", "itinerary--x", "Itinerary-x"} {
+		if validPlacementValue(bad) {
+			t.Errorf("%q 不該合法", bad)
+		}
+	}
+}
+
+func TestCampaignPlacementIsValidatedAndItinerariesAreListed(t *testing.T) {
+	env := newEnv(t, "usr_a")
+	code, res := env.do("usr_a", "POST", "/partner/api/campaigns", map[string]string{"name": "活動", "placement": "jiufen2"})
+	if code != http.StatusBadRequest || errCode(res) != "invalid_placement" {
+		t.Fatalf("打錯的版位: %d %v,應回 400 invalid_placement", code, res)
+	}
+	code, camp := env.do("usr_a", "POST", "/partner/api/campaigns", map[string]string{"name": "活動", "placement": "itinerary-jozankei-1day"})
+	if code != http.StatusCreated {
+		t.Fatalf("行程版位應可建立: %d %v", code, camp)
+	}
+	code, res = env.do("usr_a", "PUT", "/partner/api/campaigns/"+camp["id"].(string), map[string]string{"name": "活動", "placement": "nope"})
+	if code != http.StatusBadRequest || errCode(res) != "invalid_placement" {
+		t.Fatalf("更新成不合法版位: %d %v", code, res)
+	}
+
+	if _, err := env.st.CreateItineraryPage("owner", "jozankei-1day", `{"title":"定山溪一日遊"}`, "t"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.st.CreateItineraryPage("owner", "draft-one", `{"title":"草稿"}`, "t"); err != nil {
+		t.Fatal(err)
+	}
+	if err := env.st.SetItineraryPageStatus("owner", "jozankei-1day", "published"); err != nil {
+		t.Fatal(err)
+	}
+	_, list := env.do("usr_a", "GET", "/partner/api/placements", nil)
+	labels := map[string]string{}
+	for _, p := range list["placements"].([]any) {
+		m := p.(map[string]any)
+		labels[m["value"].(string)] = m["label"].(string)
+	}
+	if labels["jiufen"] == "" {
+		t.Fatal("靜態版位應都在")
+	}
+	if labels["itinerary-jozankei-1day"] != "行程頁側欄：定山溪一日遊" {
+		t.Fatalf("已發布的行程應列為版位: %v", labels)
+	}
+	if _, ok := labels["itinerary-draft-one"]; ok {
+		t.Fatal("草稿行程不該列出")
+	}
+}
+
+func TestPlanLandingURLRejectsDangerousSchemesAndNormalizesKKdayCategory(t *testing.T) {
+	env := newEnv(t, "usr_a")
+	_, camp := env.do("usr_a", "POST", "/partner/api/campaigns", map[string]string{"name": "活動"})
+	path := "/partner/api/campaigns/" + camp["id"].(string) + "/plans"
+
+	for _, u := range []string{"javascript:alert(1)", "data:text/html,x", "//example.com", "/relative"} {
+		code, res := env.do("usr_a", "POST", path, map[string]string{"title": "t", "category": "group_tour", "detail": `{"landingUrl":"` + u + `"}`})
+		if code != http.StatusBadRequest || errCode(res) != "invalid_url" {
+			t.Fatalf("%s: %d %v,應回 400 invalid_url", u, code, res)
+		}
+	}
+	if code, _ := env.do("usr_a", "POST", path, map[string]string{"title": "t", "category": "group_tour", "detail": `{"landingUrl":"https://example.com/x"}`}); code != http.StatusCreated {
+		t.Fatalf("一般 https 連結應可建立: %d", code)
+	}
+
+	// 大小寫不同的 KKday 分類不能繞過網域檢查,且會被統一成 kkday
+	code, res := env.do("usr_a", "POST", path, map[string]string{"title": "t", "category": "KKday", "detail": `{"cid":"abc","landingUrl":"https://evil.example.com/x"}`})
+	if code != http.StatusBadRequest || errCode(res) != "invalid_kkday" {
+		t.Fatalf("KKday(大寫)+非 kkday 網域: %d %v", code, res)
+	}
+	code, plan := env.do("usr_a", "POST", path, map[string]string{"title": "t", "category": " KKday ", "detail": `{"cid":"abc","landingUrl":"https://www.kkday.com/x"}`})
+	if code != http.StatusCreated || plan["category"] != "kkday" {
+		t.Fatalf("分類應統一成 kkday: %d %v", code, plan["category"])
 	}
 }
