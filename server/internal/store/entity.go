@@ -513,6 +513,27 @@ type geoAPICallLogRow struct {
 
 func (geoAPICallLogRow) TableName() string { return "geo_api_call_logs" }
 
+// geoCacheLogRow 記錄每一次「地點詳情快取查詢」的結果(命中/沒命中/搭便車),
+// 用來回答 geo_api_call_logs 答不了的問題:同一個地點被查了幾次、其中幾次
+// 是快取擋下的。geo_api_call_logs 只有真的送出 Google 請求的那幾筆。
+//
+//   - hit:快取新鮮,沒有打 Google。
+//   - miss:快取沒有或已過期,這個請求自己打了 Google(領頭者)。
+//   - shared:同一個地點已有人正在打 Google,這個請求等同一個結果,沒有另外送出。
+//
+// 每個查詢請求剛好一筆。PlaceID 讓事後能看出是不是同一批地點被反覆查。
+type geoCacheLogRow struct {
+	ID        uint      `gorm:"primaryKey;autoIncrement;column:id"`
+	Cache     string    `gorm:"column:cache;not null;index"`
+	Outcome   string    `gorm:"column:outcome;not null;index"`
+	Caller    string    `gorm:"column:caller;not null"`
+	Path      string    `gorm:"column:path"`
+	PlaceID   string    `gorm:"column:place_id;index"`
+	CreatedAt time.Time `gorm:"column:created_at;not null;index"`
+}
+
+func (geoCacheLogRow) TableName() string { return "geo_cache_logs" }
+
 // planAiChatMessageRow 對應 model.PlanAiChatMessage(見該型別的完整
 // 說明)——AI 規劃對話的單一訊息記錄,只關聯 UserID,刻意不綁 TripID。
 // ID 用自增主鍵(對齊 apiRequestLogRow/geoAPICallLogRow 等既有 log 風格

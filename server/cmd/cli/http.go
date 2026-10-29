@@ -477,3 +477,20 @@ func (c *httpClient) geoSettingList() (any, error) {
 func (c *httpClient) geoSettingSet(key string, value int) (any, error) {
 	return c.do("PATCH", "/internal/maintenance/geo-settings/"+url.PathEscape(key), map[string]any{"value": value})
 }
+
+// geoAPIStats 對齊 GET /internal/maintenance/geo-api-stats(見
+// server/internal/api/maintenance_geo_api_stats.go)。空字串的參數不送,
+// 由後端套預設值(最近 7 天、day、Asia/Taipei)。
+func (c *httpClient) geoAPIStats(from, to, period, tz string) (any, error) {
+	q := url.Values{}
+	for k, v := range map[string]string{"from": from, "to": to, "period": period, "tz": tz} {
+		if v != "" {
+			q.Set(k, v)
+		}
+	}
+	path := "/internal/maintenance/geo-api-stats"
+	if len(q) > 0 {
+		path += "?" + q.Encode()
+	}
+	return c.do("GET", path, nil)
+}

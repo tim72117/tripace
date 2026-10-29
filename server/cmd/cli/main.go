@@ -43,6 +43,7 @@
 //	entry delete -entry ID
 //	geocode      -place 文字 [-region 國碼] [-entry ID]
 //	notify       -trip ID
+//	geo-stats show [-from YYYY-MM-DD] [-to YYYY-MM-DD] [-period day|hour] [-tz 時區] [-json]   Google 呼叫次數與快取命中率
 //	partner-grant -email 文字 [-name 文字]   開通某個既有使用者的廣告業主身分（純內部維運操作）
 //
 // 所有輸出為 JSON（方便 Claude Code 解析）。
@@ -56,6 +57,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -145,6 +147,15 @@ func buildResources(c *httpClient, apiURL string) []resource {
 			commands: []resourceCommand{
 				{verb: "list", run: func(args []string) { cmdFieldMaskList(c, args) }, usage: "tripace-cli field-mask list [-json]"},
 				{verb: "set", run: func(args []string) { cmdFieldMaskSet(c, args) }, usage: "tripace-cli field-mask set -scenario KEY -fields a,b,c"},
+			},
+		},
+		{
+			// geo-stats:Google API 呼叫次數,依日期區間與週期(day/hour)
+			// 分組(見 handleMaintenanceGeoAPIStats)。只有請求筆數,
+			// 沒有當時的計費層級。
+			name: "geo-stats",
+			commands: []resourceCommand{
+				{verb: "show", run: func(args []string) { cmdGeoStatsShow(c, args) }, usage: "tripace-cli geo-stats show [-from YYYY-MM-DD] [-to YYYY-MM-DD] [-period day|hour] [-tz 時區] [-json]"},
 			},
 		},
 		{
@@ -1997,4 +2008,127 @@ func cmdGeoSettingSet(c *httpClient, args []string) {
 		fatal("geo-setting set: %v", err)
 	}
 	output(res)
+}
+
+// cmdGeoStatsShow 印出 Google API 呼叫次數:先是區間內各 endpoint 的合計,
+// 再是依週期(day/hour)展開的表格(列是週期、欄是 endpoint)。
+// 走 GET /internal/maintenance/geo-api-stats;沒帶旗標的預設值由後端決定。
+func cmdGeoStatsShow(c *httpClient, args []string) {
+	fs := flag.NewFlagSet("geo-stats show", flag.ExitOnError)
+	from := fs.String("from", "", "起日 YYYY-MM-DD(含);預設 to 往前 6 天")
+	to := fs.String("to", "", "迄日 YYYY-MM-DD(含);預設今天")
+	period := fs.String("period", "day", "分組週期:day 或 hour(hour 區間最多 7 天)")
+	tz := fs.String("tz", "", "IANA 時區,決定「一天」從哪裡切;預設 Asia/Taipei")
+	asJSON := fs.Bool("json", false, "輸出原始 JSON")
+	_ = fs.Parse(args)
+
+	res, err := c.geoAPIStats(*from, *to, *period, *tz)
+	if err != nil {
+		fatal("geo-stats show: %v", err)
+	}
+	if *asJSON {
+		output(res)
+		return
+	}
+	m, ok := res.(map[string]any)
+	if !ok {
+		output(res)
+		return
+	}
+	str := func(v any) string { s, _ := v.(string); return s }
+	rows := func(v any) []map[string]any {
+		var out []map[string]any
+		list, _ := v.([]any)
+		for _, it := range list {
+			if r, ok := it.(map[string]any); ok {
+				out = append(out, r)
+			}
+		}
+		return out
+	}
+	n := func(v any) int { f, _ := v.(float64); return int(f) }
+
+	fmt.Printf("區間 %s ~ %s(%s,以 %s 切分)\n\n", str(m["from"]), str(m["to"]), str(m["period"]), str(m["tz"]))
+
+	printGeoCacheStats(m["cache"], n, str, rows)
+
+	totals := rows(m["totals"])
+	if len(totals) == 0 {
+		fmt.Println("這段期間沒有任何 Google API 呼叫記錄。")
+		return
+	}
+	grandTotal := 0
+	fmt.Printf("%-24s %8s %8s\n", "ENDPOINT", "COUNT", "ERRORS")
+	for _, t := range totals {
+		grandTotal += n(t["count"])
+		fmt.Printf("%-24s %8d %8d\n", str(t["endpoint"]), n(t["count"]), n(t["errorCount"]))
+	}
+	fmt.Printf("%-24s %8d\n\n", "TOTAL", grandTotal)
+
+	// 欄順序沿用合計表(次數多的在前),列依週期標籤排序。
+	var cols []string
+	for _, t := range totals {
+		cols = append(cols, str(t["endpoint"]))
+	}
+	byBucket := map[string]map[string]int{}
+	var order []string
+	for _, b := range rows(m["buckets"]) {
+		label := str(b["bucket"])
+		if byBucket[label] == nil {
+			byBucket[label] = map[string]int{}
+			order = append(order, label)
+		}
+		byBucket[label][str(b["endpoint"])] = n(b["count"])
+	}
+	sort.Strings(order)
+	fmt.Printf("%-18s", "PERIOD")
+	for _, col := range cols {
+		fmt.Printf(" %*s", len(col), col)
+	}
+	fmt.Printf(" %8s\n", "SUM")
+	for _, label := range order {
+		fmt.Printf("%-18s", label)
+		sum := 0
+		for _, col := range cols {
+			v := byBucket[label][col]
+			sum += v
+			fmt.Printf(" %*d", len(col), v)
+		}
+		fmt.Printf(" %8d\n", sum)
+	}
+}
+
+// printGeoCacheStats 印出地點詳情快取的 hit/miss/shared 合計與命中率,再依週期
+// 展開。沒有記錄(快取記錄上線前的日期,或這段期間沒有查詢)時只印一行說明。
+func printGeoCacheStats(raw any, n func(any) int, str func(any) string, rows func(any) []map[string]any) {
+	c, _ := raw.(map[string]any)
+	totals, _ := c["totals"].(map[string]any)
+	hit, miss, shared := n(totals["hit"]), n(totals["miss"]), n(totals["shared"])
+	all := hit + miss + shared
+	if all == 0 {
+		fmt.Println("地點詳情快取:這段期間沒有查詢記錄(記錄功能上線前的日期不會有資料)。")
+		fmt.Println()
+		return
+	}
+	rate, _ := c["hitRate"].(float64)
+	fmt.Printf("地點詳情快取:共 %d 次查詢,命中 %d(%.1f%%)、沒命中 %d(打了 Google)、搭便車 %d(共用同時進行的那次)\n\n",
+		all, hit, rate*100, miss, shared)
+
+	byBucket := map[string]map[string]int{}
+	var order []string
+	for _, b := range rows(c["buckets"]) {
+		label := str(b["bucket"])
+		if byBucket[label] == nil {
+			byBucket[label] = map[string]int{}
+			order = append(order, label)
+		}
+		byBucket[label][str(b["outcome"])] = n(b["count"])
+	}
+	sort.Strings(order)
+	fmt.Printf("%-18s %8s %8s %8s %8s\n", "PERIOD", "HIT", "MISS", "SHARED", "HIT%")
+	for _, label := range order {
+		h, ms, sh := byBucket[label]["hit"], byBucket[label]["miss"], byBucket[label]["shared"]
+		fmt.Printf("%-18s %8d %8d %8d %7.1f%%\n", label, h, ms, sh, float64(h)*100/float64(h+ms+sh))
+	}
+	fmt.Println()
 }

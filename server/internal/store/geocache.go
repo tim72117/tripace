@@ -2,6 +2,7 @@ package store
 
 import (
 	"errors"
+	"fmt"
 	"sort"
 	"time"
 
@@ -597,4 +598,74 @@ func (s *Store) GeoAPICallStatsTimeline(since time.Time) ([]TimelineBucket, erro
 		return nil, err
 	}
 	return requestTimelineSince(rows, time.Minute), nil
+}
+
+// GeoAPIPeriodBucket 是「某個週期 × 某個 Google endpoint」的呼叫次數。
+// Bucket 是依呼叫端指定時區算出的標籤:day 為 "2006-01-02"、hour 為
+// "2006-01-02 15:00"。
+type GeoAPIPeriodBucket struct {
+	Bucket     string `json:"bucket"`
+	Endpoint   string `json:"endpoint"`
+	Count      int64  `json:"count"`
+	ErrorCount int64  `json:"errorCount"`
+}
+
+// GeoAPICallStatsByPeriod 回傳 [from, to) 之間,依週期(day 或 hour)與
+// endpoint 分組的 Google API 呼叫次數,依標籤由舊到新、同週期內依次數由多到
+// 少排序。沒有呼叫的週期不會出現(由呼叫端決定要不要補零)。
+//
+// 分組在 Go 端做而不是用 SQL 的 date_trunc,理由同 requestTimelineSince:
+// store 同時支援 Postgres 與 SQLite,日期截斷語法不相容。時區 loc 決定「一天」
+// 從哪裡切——同一批資料用 UTC 與 Asia/Taipei 切出的每日次數會不同。
+func (s *Store) GeoAPICallStatsByPeriod(from, to time.Time, loc *time.Location, period string) ([]GeoAPIPeriodBucket, error) {
+	layout := "2006-01-02"
+	switch period {
+	case "day":
+	case "hour":
+		layout = "2006-01-02 15:00"
+	default:
+		return nil, fmt.Errorf("period 必須是 day 或 hour")
+	}
+	var rows []struct {
+		CreatedAt time.Time
+		Endpoint  string
+		Errored   bool
+	}
+	err := s.db.Model(&geoAPICallLogRow{}).
+		Select("created_at, endpoint, (errored OR status_code >= 400) as errored").
+		// 轉 UTC 再比:SQLite 把時間存成字串,參數帶 +08:00 之類的位移時
+		// 字串比較會錯(Postgres 無此問題,但兩邊都要正確)。
+		Where("created_at >= ? AND created_at < ?", from.UTC(), to.UTC()).
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	type key struct{ bucket, endpoint string }
+	agg := map[key]*GeoAPIPeriodBucket{}
+	for _, r := range rows {
+		k := key{r.CreatedAt.In(loc).Format(layout), r.Endpoint}
+		b, ok := agg[k]
+		if !ok {
+			b = &GeoAPIPeriodBucket{Bucket: k.bucket, Endpoint: k.endpoint}
+			agg[k] = b
+		}
+		b.Count++
+		if r.Errored {
+			b.ErrorCount++
+		}
+	}
+	out := make([]GeoAPIPeriodBucket, 0, len(agg))
+	for _, b := range agg {
+		out = append(out, *b)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Bucket != out[j].Bucket {
+			return out[i].Bucket < out[j].Bucket
+		}
+		if out[i].Count != out[j].Count {
+			return out[i].Count > out[j].Count
+		}
+		return out[i].Endpoint < out[j].Endpoint
+	})
+	return out, nil
 }

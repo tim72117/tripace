@@ -2,6 +2,30 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.50.0 — 2026-10-29
+
+Google API 呼叫統計與地點詳情快取命中記錄。**無破壞性變更**(只新增資料表、端點、CLI 指令與 geo 套件的觀察者介面;既有公開符號與 API 都沒有移除或改名)。
+
+### 新增
+
+- **`tripace-cli geo-stats show`**(`GET /internal/maintenance/geo-api-stats`,管理員):依日期區間(`-from`/`-to`,含頭尾)與分配週期(`-period day|hour`)回報各 Google 端點的呼叫次數與錯誤數,`-tz` 決定「一天」從哪裡切(預設 `Asia/Taipei`)。day 最多 92 天、hour 最多 7 天。只有請求筆數,沒有當時的計費層級。
+- **地點詳情快取命中記錄**:新資料表 `geo_cache_logs`(啟動時 AutoMigrate 自動建立,已加進 schema check),每個地點詳情查詢一筆,結果為 `hit`(快取新鮮)、`miss`(自己打了 Google)、`shared`(共用同時進行的那次 Google 呼叫);含 caller、path、place_id。`geo-stats show` 會印命中率並依週期展開。`GetPlaceDetailsFresh` 不查快取、不記錄。
+- geo 套件新增 `CacheObserver`/`SetCacheObserver`/`CacheOutcome`(`CacheHit`/`CacheMiss`/`CacheShared`),由 `cmd/server` 注入寫資料庫的實作。
+
+### 維運
+
+- 正式機 `placeDetails`、`cityDistricts` 兩個 field mask 已拿掉 `editorialSummary`,從 Enterprise + Atmosphere 降到 Pro(資料庫設定,非程式變更)。程式碼裡寫死的預設值仍帶 `editorialSummary`,資料庫沒有覆寫時會退回最貴那一檔。
+
+### 文件
+
+- `SKILL.md`、`docs/routing-architecture.md`、`cmd/cli/main.go` 開頭的指令清單補上 `geo-stats`。
+
+### 已知限制
+
+- 快取記錄上線前的日期沒有命中資料。
+- `geo_cache_logs` 目前沒有保留期限,每次查詢寫一筆(含命中),寫入用不設上限的 goroutine;統計是把區間內的資料列讀進 Go 再分組。流量變大前應改成有上限的批次寫入、定期清理與資料庫端分組。
+- 領頭者二次檢查快取命中時,等它的請求被記成 `shared` 而非 `hit`。
+
 ## v0.49.0 — 2026-10-29
 
 規劃面板:時間軸圖卡上滑操作、更換地點、統一的詢問頁啟動、前端 Trip;island 茶樓模型瘦身與載入強化。**無破壞性變更**(對外 API、資料庫與既有公開符號都沒有移除或改名;前端新增的功能都是選填 prop 或預設關閉的開關)。

@@ -308,6 +308,9 @@ func main() {
 	// 不需要各自記得去接。有效期由 geo-setting 的 placeDetailsCacheHours 調整,
 	// 啟動後由 startGeoSettingsRefreshLoop 套用資料庫的值。
 	geo.SetDefaultDetailsCache(api.NewPlaceDetailsCache(st))
+	// 記錄每次地點詳情快取查詢的命中/沒命中/搭便車(geo_cache_logs),
+	// 供 geo-stats 算命中率。
+	geo.SetCacheObserver(storeGeoCacheObserver{store: st})
 	// 啟動時把 geoRateLimitFallback(含這次新增的 photoMediaDailyMax)
 	// 寫進資料庫——但只在該 endpoint 尚未有任何資料列時才寫入(見
 	// seedGeoRateLimitsIfEmpty 的完整說明),避免每次重啟都用啟動參數

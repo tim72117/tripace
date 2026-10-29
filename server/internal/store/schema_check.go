@@ -52,7 +52,7 @@ func schemaCheckTargets() []any {
 		&cliAuthSessionRow{},
 		&attractionRow{}, &contentPageRow{}, &itineraryPageRow{}, &blogProfileRow{}, &uploadedPhotoRow{}, &photoVariantRow{}, &photoCacheRow{}, &placeDetailsCacheRow{},
 		&googlePlacePhotoRow{}, &photoAssetRow{},
-		&apiRequestLogRow{}, &geoAPICallLogRow{}, &geoRateLimitRow{},
+		&apiRequestLogRow{}, &geoAPICallLogRow{}, &geoCacheLogRow{}, &geoRateLimitRow{},
 		&geoFieldMaskRow{}, &geoSettingRow{}, &planAiChatMessageRow{},
 		&partnerRow{}, &campaignRow{}, &adPlanRow{},
 	}

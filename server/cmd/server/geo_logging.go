@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"github.com/tim72117/tripace/internal/apigateway"
+	"github.com/tim72117/tripace/internal/geo"
 	"github.com/tim72117/tripace/internal/store"
 )
 
@@ -28,3 +29,20 @@ func (l storeGeoCallLogger) LogCall(endpoint, caller, path string, statusCode in
 }
 
 var _ apigateway.CallLogger = storeGeoCallLogger{}
+
+// storeGeoCacheObserver 是 geo.CacheObserver 的實作,把每次地點詳情快取查詢的
+// 結果寫進 geo_cache_logs。寫入放在 goroutine:觀察者在查詢路徑上同步呼叫,
+// 命中時不該為了記錄多等一次資料庫往返;失敗只記 log,理由同 storeGeoCallLogger。
+type storeGeoCacheObserver struct {
+	store *store.Store
+}
+
+func (o storeGeoCacheObserver) ObserveCache(cache string, outcome geo.CacheOutcome, caller, path, key string) {
+	go func() {
+		if err := o.store.LogGeoCache(cache, string(outcome), caller, path, key); err != nil {
+			log.Printf("geo cache log 寫入失敗: %v", err)
+		}
+	}()
+}
+
+var _ geo.CacheObserver = storeGeoCacheObserver{}

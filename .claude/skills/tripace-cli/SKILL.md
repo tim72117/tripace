@@ -112,6 +112,13 @@ tripace-cli field-mask list -json
 # 修改一個查詢情境的欄位（完整取代，不是增量）
 tripace-cli field-mask set -scenario placeDetails -fields displayName,formattedAddress,location,photos
 
+# Google API 呼叫次數與地點詳情快取命中率（依日期區間與週期分組；需管理員）
+# 預設最近 7 天、day、Asia/Taipei；period=hour 區間最多 7 天，day 最多 92 天
+tripace-cli geo-stats show
+tripace-cli geo-stats show -from 2026-10-20 -to 2026-10-28
+tripace-cli geo-stats show -from 2026-10-20 -to 2026-10-20 -period hour -tz UTC
+tripace-cli geo-stats show -json
+
 # 查詢有 place_id 但還沒有 Google 照片的景點（可選 -city 限定城市）
 GOWORK=off go run ./cmd/cli attraction query -status no-google-photo [-city "台南"]
 
@@ -204,3 +211,15 @@ Google 按**請求裡最高層級的那一個欄位**計費，所以單一欄位
 - `trip reset`/`entry delete`/`attraction delete` 都是真的會刪除資料的操作，執行前要跟使用者確認範圍（哪個行程/哪個 entry/哪個地標），不要在不確定的情況下對正式環境資料執行。
 - `/internal/maintenance/*`（`geocode`、`attractions*`、`attractions/{id}/update-photo` 的底層端點）是刻意跟 `/internal/geo/*` 分開命名空間的維運專用端點，前端產品本身不會呼叫這批路徑，只有 CLI 會用到。
 - 景點已不再有 `photo_url` 這個 DB 欄位/建檔旗標（2026-10 已 DROP COLUMN）、也不再支援 Pexels 自動配圖或使用者手動指定圖片網址；`attraction add` 建檔時不帶任何照片相關輸入，照片一律透過 `attraction photo-update` 另外觸發 Google Places 查詢，查到的圖片存進 `photo_assets` 表並落地存進 GCS（`GCS_PHOTO_BUCKET` 環境變數），不直接引用外部圖床連結。
+
+## Google 呼叫統計與快取命中率
+
+`geo-stats show` 回答「最近對 Google 打了幾次、快取擋下幾次」：
+
+- **Google 呼叫次數**：來源 `geo_api_call_logs`，只有真的送出的 Google 請求（依端點分組，含錯誤數）。
+  **只有筆數，沒有當時的計費層級**——要判斷某段時間是哪一檔，得對照 `field-mask` 的修改時間。
+- **地點詳情快取**：來源 `geo_cache_logs`，每個查詢請求一筆，結果三選一：
+  `hit`（快取新鮮，沒打 Google）、`miss`（自己打了 Google）、`shared`（同一地點已有請求在打，
+  共用那次結果）。命中率 = hit / 全部查詢，`shared` 不算命中但也沒有另外計費。
+  這項記錄上線之前的日期沒有資料。
+- 「一天」從哪裡切由 `-tz` 決定（預設 Asia/Taipei）；同一批資料用 UTC 與台北切出的每日次數不同。

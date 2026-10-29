@@ -1057,6 +1057,9 @@ func (s *Server) Routes() http.Handler {
 	// 兩者都是成本設定,由 tripace-cli 或後台操作,不是產品前端。
 	internalMux.HandleFunc("GET /internal/maintenance/field-masks", s.handleMaintenanceFieldMaskList)
 	internalMux.HandleFunc("PATCH /internal/maintenance/field-masks/{key}", s.handleMaintenanceFieldMaskSet)
+	// geo-api-stats——依日期區間與週期(day/hour)回報 Google API 呼叫次數,
+	// 供 CLI 的 geo-stats 使用;僅管理員(見 handleMaintenanceGeoAPIStats)。
+	internalMux.HandleFunc("GET /internal/maintenance/geo-api-stats", s.handleMaintenanceGeoAPIStats)
 	// geo-settings——列出/修改可線上調整的數值設定(照片最大張數、照片
 	// 過期週期,見 maintenance_geo_settings.go)。同一個命名空間與呼叫者:
 	// 成本設定,由 tripace-cli 操作,不是產品前端。

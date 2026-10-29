@@ -118,11 +118,12 @@ server 的 HTTP API(見 `cmd/cli/main.go` 開頭的架構說明),不再有任何
 | PATCH | /internal/maintenance/rate-limits/{endpoint} | handleMaintenanceRateLimitSet | rateLimitSet()(`rate-limit set`) |
 | GET | /internal/maintenance/field-masks | handleMaintenanceFieldMaskList | fieldMaskList()(`field-mask list`) |
 | PATCH | /internal/maintenance/field-masks/{key} | handleMaintenanceFieldMaskSet | fieldMaskSet()(`field-mask set`) |
+| GET | /internal/maintenance/geo-api-stats | handleMaintenanceGeoAPIStats | geoAPIStats()(`geo-stats show`) |
 
 > 上表**不是**完整清單:`content-pages`、`itinerary-pages`、`sync/*` 與
 > `attractions/{id}/{coords,field,place-id,theme}` 等維運路由後來陸續加入,
 > 這份文件沒有跟上,以 `server/internal/api/api.go` 的 `internalMux`
-> 註冊處為準。限流與 field mask 這四支要求管理權限
+> 註冊處為準。限流、field mask 與 geo-api-stats 這五支要求管理權限
 > (`requireRateLimitAdmin`),不是任何登入使用者都能呼叫。
 
 ### `/public/plan-ai/*` 與 `/public/geo/plan-ai/*`(訪客可呼叫,以來源 IP 節流)

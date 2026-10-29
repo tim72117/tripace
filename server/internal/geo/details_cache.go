@@ -104,6 +104,54 @@ func (c *Client) SetDetailsCache(cache PlaceDetailsCache) {
 	c.detailsCache = cache
 }
 
+// CacheOutcome 是一次快取查詢的結果,每個查詢請求剛好對應一種。
+type CacheOutcome string
+
+const (
+	// CacheHit:快取新鮮,沒有打 Google。
+	CacheHit CacheOutcome = "hit"
+	// CacheMiss:沒有快取或已過期,這個請求自己打了 Google(領頭者)。
+	CacheMiss CacheOutcome = "miss"
+	// CacheShared:同一個地點已有請求正在打 Google,這個請求等同一個結果,
+	// 沒有另外送出——對 Google 帳單來說不算一次呼叫,也不算快取命中。
+	CacheShared CacheOutcome = "shared"
+)
+
+// CacheNamePlaceDetails 是地點詳情快取在 CacheObserver 的名稱。
+const CacheNamePlaceDetails = "place_details"
+
+// CacheObserver 接收每一次快取查詢的結果,用來統計命中率。geo 套件不依賴
+// store,由 cmd/server 注入寫資料庫的實作(同 apigateway.CallLogger 的模式)。
+// 實作必須很快、不可阻塞(查詢路徑上同步呼叫),寫資料庫請自行非同步。
+type CacheObserver interface {
+	ObserveCache(cache string, outcome CacheOutcome, caller, path, key string)
+}
+
+var (
+	cacheObserverMu sync.RWMutex
+	cacheObserver   CacheObserver
+)
+
+// SetCacheObserver 設定整個 process 共用的觀察者。傳 nil 代表不記錄。
+func SetCacheObserver(o CacheObserver) {
+	cacheObserverMu.Lock()
+	defer cacheObserverMu.Unlock()
+	cacheObserver = o
+}
+
+// observeDetails 通知觀察者一次地點詳情快取查詢的結果。caller/path 取自
+// ctx(見 WithCaller/WithPath);領頭者的 goroutine 用 WithoutCancel 保留了
+// 這些值。
+func observeDetails(ctx context.Context, outcome CacheOutcome, placeID string) {
+	cacheObserverMu.RLock()
+	o := cacheObserver
+	cacheObserverMu.RUnlock()
+	if o == nil {
+		return
+	}
+	o.ObserveCache(CacheNamePlaceDetails, outcome, callerFromContext(ctx), pathFromContext(ctx), placeID)
+}
+
 // cachedDetails 讀快取並判斷是否仍在有效期內。命中時一律標示 FromCache、
 // 清掉 PhotoRefs(快取不存照片參照)。
 func (c *Client) cachedDetails(placeID string) (PlaceDetails, bool) {
@@ -129,6 +177,7 @@ func (c *Client) GetPlaceDetails(ctx context.Context, placeID string) (PlaceDeta
 		return PlaceDetails{}, ErrNotFound
 	}
 	if d, ok := c.cachedDetails(placeID); ok {
+		observeDetails(ctx, CacheHit, placeID)
 		return d, nil
 	}
 	return c.fetchPlaceDetailsShared(ctx, placeID, true)
@@ -188,6 +237,12 @@ func (c *Client) fetchPlaceDetailsShared(ctx context.Context, placeID string, us
 	}
 	detailsFlight.mu.Unlock()
 
+	// 搭便車的請求在這裡記錄(領頭者在 runDetailsFlight 記 hit 或 miss)。
+	// Fresh 不走快取,不屬於快取查詢,不記錄。
+	if joined && useCache {
+		observeDetails(ctx, CacheShared, placeID)
+	}
+
 	// 觸發者與跟隨者都一樣:等結果,但各自尊重自己的 context。
 	select {
 	case <-call.done:
@@ -215,9 +270,11 @@ func (c *Client) runDetailsFlight(ctx context.Context, key, placeID string, useC
 
 	if useCache {
 		if d, ok := c.cachedDetails(placeID); ok {
+			observeDetails(ctx, CacheHit, placeID)
 			call.val = d
 			return
 		}
+		observeDetails(ctx, CacheMiss, placeID)
 	}
 
 	fctx, cancel := context.WithTimeout(ctx, detailsFlightTimeout)
