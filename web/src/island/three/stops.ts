@@ -6,7 +6,7 @@
 import * as THREE from 'three'
 import { CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js'
 import type { IslandStop } from '../logic/articleToIsland'
-import { animateModel, buildModel, type BuiltModel, type Model3D } from './model'
+import { animateModel, buildModel, placementScale, type BuiltModel, type Model3D } from './model'
 import { LANTERN_GLOW_BASE, buildStopLanterns, collectLanternAnchors } from './stopLanterns'
 
 export type StopView = {
@@ -43,7 +43,7 @@ export function buildStops(
     if (!a || !models[a.model]) return
     const built = buildModel(models[a.model])
     const root = built.root
-    const sc = a.scale ?? 1
+    const sc = placementScale(models[a.model], a.scale)
     root.scale.setScalar(sc)
     root.rotation.y = a.rotY ?? 0
     root.position.set(a.x, a.y ?? heightAt(a.x, a.z), a.z)
@@ -60,9 +60,9 @@ export function buildStops(
         mesh.material = c
         glowMats.push({ m: c, base: mat.emissiveIntensity || 0.6 })
       }
-      // 很小的部件不投影,省陰影 pass 的繪製呼叫
+      // 很小的部件不投影,省陰影 pass 的繪製呼叫(0.78 m = 換成 1 格 = 1 m 之前的 0.5 格)
       const size = new THREE.Box3().setFromObject(mesh).getSize(new THREE.Vector3())
-      if (Math.max(size.x, size.y, size.z) < 0.5) mesh.castShadow = false
+      if (Math.max(size.x, size.y, size.z) < 0.78) mesh.castShadow = false
     })
     group.add(root)
 

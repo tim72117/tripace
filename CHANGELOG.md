@@ -2,6 +2,55 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.52.0 — 2026-10-29
+
+3D 小島統一成真實尺寸(1 格 = 1 m)、加入大型場景框架(場景資料檔、烘焙、世界格子、BatchedMesh、串流與 LOD、陰影跟著鏡頭、效能調節器);CLI 登入完成頁改成置中版面並顯示真正的結果。**有破壞性變更**(見下方清單)。
+
+### 破壞性變更
+
+- `GlbSource`(`web/src/island/scenes/types.ts`)與 `GlbAttachment`(`web/src/island/three/model.ts`)移除 `unit` 欄位:GLB 一律以公尺建模、放進場景不換算;大小改由同 id 模型的 `Model3D.unit` 決定。場景 `data.ts` 的 `glbModels` 只寫 `{ url }`。
+- 刪除 `web/src/island/scenes/night-jiufen/layout.ts`:`ISLAND_LAYOUT`、`PATH_POINT_Y`、`groundY` 改由 `scenes/night-jiufen/world/index.ts` 匯出(由 `world/` 的 JSON 資料檔組成);程序化擺放規則在 `scenes/night-jiufen/rules.ts`。
+- `buildScatter`(`three/scatter.ts`)產生的網格從 `InstancedMesh` 改為 `BatchedMesh`,回傳值多了 `cellInstances`;讀取散落物網格的程式要改用 BatchedMesh 的 API。
+- 世界單位改為 1 格 = 1 m:版面座標、高度全部是舊值 × 1.5625,模型的版面 `scale` 只代表小幅變化。沿用舊數值的外部版面要一起換算。
+
+### 新增
+
+- **模型真實尺寸**:`Model3D.unit`(parts 的 1 單位 = 幾公尺)與 `placementScale`(擺放縮放 = unit × scale),散落物、站點、碰撞、旅人共用;各模型宣告自己的真實尺寸。
+- **豎崎路石階**:階數依長度推出(約 17 cm 一階),豎崎路約 55 階;新增短版 `deco-shuqi-stairs-small`(小石階,約 20 階)。石階模型可宣告 `coversPath`(自己畫路面):步道帶子在範圍內沉下去、不擋人。
+- **石階磚**:Blender 腳本 `web/tools/blender/stone_steps.py` 與兩款 GLB(`deco-stone-steps`、`deco-stone-steps-landing`)。
+- **場景檔案格式**(`logic/world/sceneFormat.ts`):`world/` 依用途分層的 JSON(scene、terrain、paths、stops、camera、lighting),擺放物件一格一檔(`cells/<ix>_<iz>.json`,每筆標 `source: hand | rule`);屋排平台 `y: "auto"` 載入時計算。
+- **烘焙**:`npm run island:bake -- <sceneId>`(`web/scripts/island-world.mjs` → `tools/bakeWorld.ts`)執行規則、依格子寫回 cells,保留手擺;每個程序化圖層獨立種子,松林以格子為單位取種子。新鮮度測試確保 cells 與規則一致。
+- **世界格子**(`logic/world/grid.ts`)、**每格串流與 LOD 狀態**(`logic/world/streaming.ts`)與**格子管理器**(`three/world/cellRuntime.ts`);地形頂面依格子切塊(`three/world/cellSplit.ts`)。預設全部載入、最細,畫面不變。
+- **陰影跟著鏡頭**(`logic/world/shadowFrame.ts`):陰影範圍以鏡頭焦點為中心、半寬隨距離縮放並對齊像素。太陽方向每 10 分鐘遊戲時間跳一次,陰影圖改為手動更新(太陽跳動時與每 0.1 秒)。
+- **效能調節器**(`logic/world/governor.ts`):持續太慢降一級像素密度,有餘裕再升回。
+- **CLI 登入完成頁**(`server/internal/clipage`):`tripace-cli` 與 `partner-cli` 共用,畫面置中,支援暗色。
+- handbook「研究」分類新增〈3D 小島:大型場景框架(最小框架與待辦)〉。
+
+### 變更
+
+- 散落物改用 `BatchedMesh`(依材質參數 × 是否投影分批,逐實例剔除);封面繪製呼叫約 292 → 240。
+- 換算成公尺時一併調整依世界尺度的常數:陰影範圍、海面、天空、光暈、點光源(亮度 × 1.5625^1.5)、天燈、螢火蟲、地表著色、避障參數(`STOP_CLEAR` 等改由 `scatterResolve.ts` 匯出共用)、站點小部件不投影的門檻。
+- 人物腳底高度:步道路面重疊、最近那段高差超過 0.45 m 時,改取最接近目前腳底的那段(小石階上段旁的茶樓肩步道不再被當成牆)。
+- 避障:`keepY` 的手擺物件(石階、地標)不做步道、站點、坡度檢查。
+
+### 修正
+
+- CLI 瀏覽器登入:先換 token 再回頁面,換失敗顯示「登入未完成」,不再在失敗時宣稱成功;callback 改用 `sync.Once`,同時進來的重複請求只換一次 token。
+
+### 文件
+
+- `web/src/island/README.md`、`scenes/night-jiufen/world/README.md`(資料檔怎麼改、怎麼烘焙);`docs/island/` 三份與 `docs/refactor-island-terrain-2026-10.md` 開頭加註資料搬遷與單位換算。
+
+### 已知限制
+
+- 石階磚的石塊部件(`slab*`)被當成實心碰撞,探索模式會擋住它與房子之間的通道;石階磚也沒有可走的踏面高度。
+- 效能調節器量的是兩幀間隔,30 Hz 螢幕或視窗被節流時會誤降級(實測在 1 與 1.25 之間來回)。
+- 太陽分段跳動實際沒省到陰影重畫(每 0.1 秒仍會補畫),只剩明暗每 1.25 秒跳一下的副作用。
+- 蒸氣發射點高度、站點飛行鏡頭偏移、標籤高度沒有換算成公尺。
+- 封面鏡頭比換算前近、封面影子偏淡、路燈沒有影子,原因尚未查明。
+- 散落物因改成每層獨立種子重抽過一次,位置與之前不同。
+- 串流、模型 LOD、HLOD、地形 LOD、分層陰影只接了介面,細節見 handbook 的大型場景框架文件。
+
 ## v0.51.0 — 2026-10-29
 
 照片儲存(GCS)斷路器:儲存服務壞掉時,背景補圖在花錢之前就跳過。**無破壞性變更**(只新增套件、方法與回應欄位;既有符號與 API 沒有移除或改名,`photostorage` 的上傳錯誤訊息文字不變)。

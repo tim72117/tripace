@@ -1,0 +1,9 @@
+{
+  "format": 1,
+  "cell": "-2_1",
+  "placements": [
+    {"model":"deco-lantern-red","x":-39.19,"z":35.74,"y":1.09,"rotY":0,"scale":1.05,"seed":317933,"layer":"row-lights","source":"rule"},
+    {"model":"deco-lantern-red","x":-35.27,"z":35.57,"y":1.14,"rotY":0,"scale":0.96,"seed":378378,"layer":"row-lights","source":"rule"},
+    {"model":"deco-rock","x":-40.09,"z":32.68,"y":1.56,"rotY":0.13,"scale":1.15,"seed":690933,"layer":"ground-cover","source":"rule"}
+  ]
+}

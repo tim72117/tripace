@@ -33,7 +33,7 @@ export function buildSky(starCount: number): Sky {
         #include <colorspace_fragment>
       }`,
   })
-  const dome = new THREE.Mesh(new THREE.SphereGeometry(400, 32, 16), mat)
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(625, 32, 16), mat)
   dome.renderOrder = -10
   group.add(dome)
 

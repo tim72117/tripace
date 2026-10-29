@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "cell": "-2_-2",
+  "placements": [
+    {"model":"deco-tree-pine","x":-61.23,"z":-32.68,"y":28.38,"rotY":4.07,"scale":1.17,"seed":211393,"layer":"pines","source":"rule"},
+    {"model":"deco-tree-pine","x":-52.08,"z":-40.33,"y":32.79,"rotY":3.86,"scale":1.06,"seed":984657,"layer":"pines","source":"rule"},
+    {"model":"deco-tree-pine","x":-51.59,"z":-32.16,"y":27.16,"rotY":4.81,"scale":1.17,"seed":311251,"layer":"pines","source":"rule"},
+    {"model":"deco-tree-pine","x":-48.42,"z":-43.02,"y":32.6,"rotY":5.98,"scale":1.03,"seed":773332,"layer":"pines","source":"rule"},
+    {"model":"deco-tree-pine","x":-47.08,"z":-32.93,"y":27.81,"rotY":0.25,"scale":0.93,"seed":707016,"layer":"pines","source":"rule"},
+    {"model":"deco-tree-pine","x":-43,"z":-43.73,"y":34.27,"rotY":6.14,"scale":0.93,"seed":247090,"layer":"pines","source":"rule"},
+    {"model":"deco-tree-pine","x":-43.85,"z":-39.34,"y":36.41,"rotY":1.46,"scale":0.85,"seed":440408,"layer":"pines","source":"rule"},
+    {"model":"deco-tree-pine","x":-39.64,"z":-40.23,"y":36.97,"rotY":2.91,"scale":0.89,"seed":204428,"layer":"pines","source":"rule"},
+    {"model":"deco-tree-pine","x":-39.92,"z":-32.53,"y":27.06,"rotY":1.03,"scale":1.05,"seed":644611,"layer":"pines","source":"rule"},
+    {"model":"deco-tree-pine","x":-35.74,"z":-35.36,"y":30.96,"rotY":2.7,"scale":1.03,"seed":223316,"layer":"pines","source":"rule"}
+  ]
+}

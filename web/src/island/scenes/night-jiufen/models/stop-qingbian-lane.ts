@@ -7,7 +7,7 @@ import type { Model3D, Part, Vec3 } from '../../../three/model';
 //   - +X 側：下半段矮石牆、上半段一角老屋（窗內暖光）、三盞路燈立在路與牆之間。
 //   - -X 側（建議朝向鏡頭）：低矮的竹籬笆與一小叢竹子，不擋視線。
 // 尺寸：長 1（Z）、寬約 0.6、路面爬升 0.15、老屋最高約 0.45。
-// 建議 scale 10 → 約 10 格長、爬升 1.5 格，剛好接上一層較高的階地；rotY 讓 -Z 朝上坡方向。
+// unit 15.625 → 真實尺寸約 15.6 m 長、爬升 2.3 m,剛好接上一層較高的階地；rotY 讓 -Z 朝上坡方向。
 
 const SEGMENTS = 8;
 const RISE = 0.15;
@@ -78,6 +78,7 @@ const bamboo: Part[] = [0, 1, 2].map((i): Part => ({
 }));
 
 const model: Model3D = {
+  unit: 15.625, // 真實尺寸(1 格 = 1 m):路段約 15.6 m 長
   palette: {
     paving: '#8d8a82',
     pavingLight: '#9d998f',

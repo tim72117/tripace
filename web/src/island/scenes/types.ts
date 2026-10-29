@@ -10,8 +10,9 @@ import type { IslandLayout } from '../data/layoutTypes'
 import type { ArticleSource, Byline } from '../logic/articleToIsland'
 import type { Model3D } from '../three/model'
 
-// GlbSource——某個模型 id 的高細節 GLB 版本:url 是資產網址(Vite 的 ?url 匯入),unit 見 three/model.ts 的 GlbAttachment。
-export type GlbSource = { url: string; unit: number };
+// GlbSource——某個模型 id 的高細節 GLB 版本:url 是資產網址(Vite 的 ?url 匯入)。GLB 一律以公尺建模,
+// 不另外換算;擺放尺寸由同 id 模型的 unit 決定(見 three/model.ts)。
+export type GlbSource = { url: string };
 
 export type SceneSeo = { title: string; description: string }
 

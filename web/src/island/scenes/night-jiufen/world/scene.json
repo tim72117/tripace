@@ -1,0 +1,33 @@
+{
+  "format": 1,
+  "id": "night-jiufen",
+  "grid": {
+    "cellSize": 32
+  },
+  "seed": 20261012,
+  "layers": {
+    "string-lights": {},
+    "stalls": {},
+    "cats": {},
+    "landmarks": {},
+    "plaza": {},
+    "path-lights": {},
+    "houses": {},
+    "row-lights": {},
+    "pines": {},
+    "banyans": {},
+    "bamboo": {},
+    "ground-cover": {},
+    "cliff-rocks": {}
+  },
+  "topY": -3.90625,
+  "thickness": 10.9375,
+  "sea": {
+    "y": -5.46875,
+    "color": "#2a4f78"
+  },
+  "river": {
+    "points": [],
+    "width": 3.90625
+  }
+}

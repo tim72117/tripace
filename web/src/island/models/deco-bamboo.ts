@@ -2,7 +2,7 @@ import type { Model3D, Part } from '../three/model';
 
 // 竹叢：六根細高的竹竿從同一處冒出，每根以不同相位 sway，頂端一簇竹葉。
 // 設計意圖：輕便路旁與階地邊的綠意，搖曳的動態讓安靜的巷子「有風」。
-// 尺寸：寬約 0.6、高約 1.5。建議 scale 2.5~3.5。
+// 尺寸：寬約 0.6、高約 1.5。版面 scale 預設 1,只做小幅變化(真實尺寸見 unit)。
 const STALKS: Array<[number, number, number, number]> = [
   // [x, z, 高度, 傾斜]
   [0, 0, 1.45, 0],
@@ -25,6 +25,7 @@ const stalks: Part[] = STALKS.map(([x, z, h, tilt], i) => ({
 }));
 
 const model: Model3D = {
+  unit: 4.6875, // 真實尺寸(1 格 = 1 m):竹叢約 7.3 m 高
   palette: {
     stalk: '#7d9a4a',
     stalkAlt: '#93a858',

@@ -9,13 +9,12 @@ import type { PathCurve } from '../logic/pathCurve'
 import { createColliderIndex, pushTrail, steerToward, trailPointBehind, tryStep, type WalkState } from '../logic/walk'
 import { makeWalkWorld } from '../logic/walkWorld'
 import { buildColliderPolys, type ColliderPlacement } from './colliders'
-import { animateModel, buildModel, type BuiltModel, type Model3D } from './model'
+import { animateModel, buildModel, placementScale, type BuiltModel, type Model3D } from './model'
 
 export const WALK_SPEED = 4 // 格/秒
 export const PLAYER_RADIUS = 0.28
 export const MAX_STEP = 0.7
 const CHILD_GAP = 1.2 // 小孩落後家長的軌跡距離
-const SCALE = 1.7
 
 export type ExplorerDeps = {
   layout: Pick<IslandLayout, 'outline' | 'path'>
@@ -26,7 +25,7 @@ export type ExplorerDeps = {
   placements: ReadonlyArray<ColliderPlacement> // 會擋人的擺設(散落物 + 站點)
 }
 
-type Walker = { built: BuiltModel; phase: number; weight: number; yaw: number; y: number }
+type Walker = { built: BuiltModel; scale: number; phase: number; weight: number; yaw: number; y: number }
 
 export class Explorer {
   readonly group = new THREE.Group()
@@ -42,10 +41,11 @@ export class Explorer {
   constructor(private d: ExplorerDeps) {
     const mk = (m: Model3D): Walker => {
       const built = buildModel(m)
-      built.root.scale.setScalar(SCALE)
+      const scale = placementScale(m, 1) // 人物的真實身高由模型的 unit 決定
+      built.root.scale.setScalar(scale)
       built.root.traverse((o) => { const me = o as THREE.Mesh; if (me.isMesh) me.castShadow = true })
       this.group.add(built.root)
-      return { built, phase: 0, weight: 0, yaw: 0, y: 0 }
+      return { built, scale, phase: 0, weight: 0, yaw: 0, y: 0 }
     }
     this.parent = mk(d.models['traveler-parent'])
     this.child = mk(d.models['traveler-child'])
@@ -122,16 +122,16 @@ export class Explorer {
       this.childXZ = [this.childXZ[0] + (dx / d) * step, this.childXZ[1] + (dz / d) * step]
       this.child.yaw = turnToward(this.child.yaw, Math.atan2(dx, dz), dt * 12)
       this.child.weight += (1 - this.child.weight) * 0.2
-      this.child.phase += (step / (this.child.built.stride * SCALE)) * Math.PI * 2
+      this.child.phase += (step / (this.child.built.stride * this.child.scale)) * Math.PI * 2
     } else {
       this.child.weight += (0 - this.child.weight) * 0.2
     }
-    const ty = world.surfaceY(this.childXZ[0], this.childXZ[1])
+    const ty = world.surfaceY(this.childXZ[0], this.childXZ[1], this.child.y)
     this.child.y += (ty - this.child.y) * Math.min(1, dt * 12)
   }
 
   private animate(dt: number, time: number, moved: boolean) {
-    const stride = this.parent.built.stride * SCALE
+    const stride = this.parent.built.stride * this.parent.scale
     if (moved) this.parent.phase += ((WALK_SPEED * dt) / stride) * Math.PI * 2
     this.parent.weight += ((moved ? 1 : 0) - this.parent.weight) * 0.2
     animateModel(this.parent.built, this.parent.phase, this.parent.weight, time)

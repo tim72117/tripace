@@ -11,14 +11,14 @@ import type { IslandLayout } from '../data/layoutTypes'
 import { sampleLight } from '../logic/lighting'
 import { buildPathCurve } from '../logic/pathCurve'
 import { cameraDistance, miniGlow, miniLightBoost, presetMinutes, rotationAt, shouldDrawFrame, type MiniTheme } from '../logic/mini'
-import { resolveScatter } from '../logic/scatterResolve'
+import { EDGE_CLEAR, MAX_SCATTER_RADIUS, resolveScatter, STOP_CLEAR } from '../logic/scatterResolve'
 import { heightAt as heightAtLayout } from '../logic/terrain'
 import { buildLanterns, type Lanterns } from '../three/lanterns'
 import { buildLights } from '../three/lighting'
 import { disposeObject, disposeRenderer } from '../three/dispose'
-import type { Model3D } from '../three/model'
+import { placementScale, type Model3D } from '../three/model'
 import { buildParticles } from '../three/particles'
-import { buildPathMesh } from '../three/pathMesh'
+import { buildPathMesh, pathCoverTest } from '../three/pathMesh'
 import { buildScatter } from '../three/scatter'
 import { buildTerrain } from '../three/terrain'
 import { buildGroundPools, type GroundPools } from './groundPools'
@@ -83,23 +83,24 @@ export class MiniIsland {
     this.world.add(terrain.group)
 
     const curve = buildPathCurve(layout.path.points)
-    this.world.add(buildPathMesh(layout, curve, heightAt, o.controlY).mesh)
-
     // 散落物與站點建築一起烘焙實例化(站點建築當成一般的擺放,動畫凍結)
     const resolved = resolveScatter(layout.scatter, layout, {
       pathLine: curve.samples.map((s): [number, number] => [s.x, s.z]),
-      pathWidth: layout.path.width, stopClear: 4, edgeClear: 1, radiusOf: (p) => Math.min(1.2, 0.3 * (p.scale ?? 1)),
+      pathWidth: layout.path.width, stopClear: STOP_CLEAR, edgeClear: EDGE_CLEAR,
+      radiusOf: (p) => Math.min(MAX_SCATTER_RADIUS, 0.3 * placementScale(o.models[p.model], p.scale)),
     })
+    // 步道在石階範圍內沉下去:只算站點與保留下來的擺放(被剔除的石階不算)
+    this.world.add(buildPathMesh(layout, curve, heightAt, o.controlY, pathCoverTest([...layout.stops, ...resolved.kept], o.models)).mesh)
     const stopPlacements = layout.stops
       .filter((s) => o.models[s.model])
       .map((s) => ({ model: s.model, x: s.x, z: s.z, rotY: s.rotY, scale: s.scale, seed: s.seed, y: s.y ?? heightAt(s.x, s.z) }))
-    const scatter = buildScatter([...resolved.kept, ...stopPlacements], o.models, { shadows: false })
+    const scatter = buildScatter([...resolved.kept, ...stopPlacements], o.models, { shadows: false, grid: layout.grid })
     this.world.add(scatter.group)
 
     // 燈籠:全亮(globalGlow=1)。光暈用較小的點;站點上方固定放 4 盞暖色 PointLight(數量固定、
     // 只改強度,亮色主題強度為 0)——真的照亮周圍的地面與建築,是暗色「自發光」的一部分。
     const stopLights = layout.stops.map((st) => ({ x: st.x, y: st.y ?? heightAt(st.x, st.z), z: st.z }))
-    this.lanterns = buildLanterns(scatter.lampSources, () => 0, stopLights, { pointLights: 4, glowSize: 2.6 })
+    this.lanterns = buildLanterns(scatter.lampSources, () => 0, stopLights, { pointLights: 4, glowSize: 4.06 })
     this.world.add(this.lanterns.group)
     // 地面光斑:每盞燈與每棟建築底下貼地的暖色光暈(暗色才顯示)
     this.pools = buildGroundPools(scatter.lampSources)
@@ -108,7 +109,7 @@ export class MiniIsland {
     // 粒子:蒸氣加少量天燈與螢火蟲,數量縮到 0.3
     const steamModels = new Set(['deco-stall', 'deco-steam', 'deco-teapot'])
     const emitters = resolved.kept.filter((p) => steamModels.has(p.model)).slice(0, 8).map((p) => ({ x: p.x, y: p.y + 1.2, z: p.z }))
-    this.particles = buildParticles(emitters, { x: 0, y: 7, z: 0 }, this.radius, 0.3)
+    this.particles = buildParticles(emitters, { x: 0, y: 11, z: 0 }, this.radius, 0.3)
     this.world.add(this.particles.group)
 
     this.scene.add(this.world, this.lights.hemi, this.lights.sun, this.lights.sun.target)

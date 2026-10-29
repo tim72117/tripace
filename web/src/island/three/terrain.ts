@@ -11,6 +11,7 @@ import { delaunay } from '../logic/delaunay'
 import { polygonCentroid, pointInPolygon } from '../logic/geometry'
 import { slopeHeightAt, type Slope } from '../logic/terrain'
 import { fieldTerrainGeometry } from './terrainField'
+import { DEFAULT_GRID, splitByCell } from './world/cellSplit'
 
 const STONE_WALL = '#8a8478'
 
@@ -199,10 +200,12 @@ export function undersideGeometry(outline: ReadonlyArray<Pt>, baseY: number, dep
   return geo
 }
 
-export type Terrain = { group: THREE.Group; water: THREE.Mesh | null; update(time: number): void }
+// cells:連續地形的頂面依世界格子切開後,每格的網格(格子鍵 → 物件),給 three/world/cellRuntime.ts 串流與 LOD 用
+export type Terrain = { group: THREE.Group; water: THREE.Mesh | null; cells: Map<string, THREE.Object3D[]>; update(time: number): void }
 
 export function buildTerrain(layout: IslandLayout, heightAt: (x: number, z: number) => number): Terrain {
   const group = new THREE.Group()
+  const cells = new Map<string, THREE.Object3D[]>()
   const { palette, outline, topY, thickness } = layout
 
   // 島底岩石
@@ -213,12 +216,21 @@ export function buildTerrain(layout: IslandLayout, heightAt: (x: number, z: numb
   if (layout.terrain) {
     // 連續地形:頂面網格 + 切片土層側壁(沒有階地與斜坡的疊層,也不需要平的島體頂面)
     const { top, wall } = fieldTerrainGeometry(layout, heightAt)
-    for (const g of [top, wall]) {
-      const m = new THREE.Mesh(g, flat('#ffffff', { vertexColors: true }))
+    const mat = flat('#ffffff', { vertexColors: true })
+    // 頂面依世界格子切開(每格自己的包圍球,視錐剔除才能整格略過);側壁沿島緣一圈,不切
+    for (const [key, g] of splitByCell(top, layout.grid ?? DEFAULT_GRID)) {
+      const m = new THREE.Mesh(g, mat)
+      m.name = `terrain-cell-${key}`
       m.receiveShadow = true
       m.castShadow = true
       group.add(m)
+      cells.set(key, [m])
     }
+    top.dispose()
+    const w = new THREE.Mesh(wall, mat)
+    w.receiveShadow = true
+    w.castShadow = true
+    group.add(w)
   } else {
   // 島體:頂面草地、側面泥土
   const body = new THREE.Mesh(extrudePolygon(outline, thickness, topY), [flat(palette.grass), flat(palette.dirt)])
@@ -285,6 +297,7 @@ export function buildTerrain(layout: IslandLayout, heightAt: (x: number, z: numb
   return {
     group,
     water,
+    cells,
     update(time) {
       const m = water?.material as THREE.MeshStandardMaterial | undefined
       if (m?.map) m.map.offset.y = -time * 0.18

@@ -4,7 +4,7 @@ import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { describe, expect, it } from 'vitest'
 import { pointInPolygon } from '../logic/geometry'
-import { ISLAND_LAYOUT } from '../scenes/night-jiufen/layout'
+import { ISLAND_LAYOUT } from '../scenes/night-jiufen/world'
 import { placementPolys } from './colliders'
 import { EMISSIVE_DIVISOR, prepareGlbScene } from './glbLoader'
 import { collectLanternAnchors } from './stopLanterns'
@@ -68,13 +68,13 @@ describe('阿妹茶樓 GLB(真實檔案)', () => {
     root.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) mats.add((m.material as THREE.Material).name) })
     expect([...mats].some((n) => /lantern/i.test(n))).toBe(false)
   })
-  it('buildModel:有 glb 就用它(縮成宣告式的單位),沒有 glb 還是畫宣告式後備', async () => {
+  it('buildModel:有 glb 就用它(根節點內以模型單位表示,擺放乘上 unit 後是公尺),沒有 glb 還是畫宣告式後備', async () => {
     const scene = prepareGlbScene(await parse())
     const decl: Model3D = { parts: [{ name: 'box', shape: { type: 'box', size: [1, 1, 1] }, position: [0, 0.5, 0] }] }
-    const withGlb = new THREE.Box3().setFromObject(buildModel({ ...decl, glb: { scene, unit: UNIT } }).root)
+    const withGlb = new THREE.Box3().setFromObject(buildModel({ ...decl, unit: 1 / UNIT, glb: { scene } }).root)
     expect(withGlb.max.y).toBeCloseTo(11.5 * UNIT, 1) // 約 1.05:跟宣告式版(高約 1)同一個尺度
     const meshes: string[] = []
-    buildModel({ ...decl, glb: { scene, unit: UNIT } }).root.traverse((o) => { if ((o as THREE.Mesh).isMesh) meshes.push(o.name) })
+    buildModel({ ...decl, unit: 1 / UNIT, glb: { scene } }).root.traverse((o) => { if ((o as THREE.Mesh).isMesh) meshes.push(o.name) })
     expect(meshes).not.toContain('box') // 宣告式的部件沒有被一起畫(不重疊)
     const fallback = new THREE.Box3().setFromObject(buildModel(decl).root)
     expect(fallback.max.y).toBeCloseTo(1, 5)
@@ -84,11 +84,11 @@ describe('阿妹茶樓 GLB(真實檔案)', () => {
     const stop = ISLAND_LAYOUT.stops.find((s) => s.model === 'stop-amei-teahouse')!
     const pad = ISLAND_LAYOUT.terrain!.pads!.find((p) => pointInPolygon(stop.x, stop.z, p.outline))!
     expect(pad).toBeTruthy()
-    const k = (stop.scale ?? 1) * UNIT // 主體 11 × 5.6 公尺
+    const k = stop.scale ?? 1 // GLB 是公尺:主體 11 × 5.6 公尺
     for (const [x, z] of [[-5.5, -2.8], [5.5, -2.8], [5.5, 2.8], [-5.5, 2.8]]) {
       expect(pointInPolygon(stop.x + x * k, stop.z + z * k, pad.outline)).toBe(true)
     }
-    const polys = placementPolys({ parts: [], glb: { scene, unit: UNIT } }, { model: stop.model, x: stop.x, y: pad.y, z: stop.z, rotY: stop.rotY, scale: stop.scale })
+    const polys = placementPolys({ parts: [], unit: 1 / UNIT, glb: { scene } }, { model: stop.model, x: stop.x, y: pad.y, z: stop.z, rotY: stop.rotY, scale: stop.scale })
     expect(polys.length).toBeGreaterThan(0)
   })
 })

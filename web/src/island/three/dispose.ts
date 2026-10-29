@@ -29,6 +29,7 @@ export function disposeObject(root: THREE.Object3D): void {
     if (Array.isArray(mat)) mat.forEach(disposeOwned)
     else if (mat) disposeOwned(mat)
     if ((obj as THREE.InstancedMesh).isInstancedMesh) (obj as THREE.InstancedMesh).dispose() // 釋放 instanceMatrix / instanceColor
+    if ((obj as THREE.BatchedMesh).isBatchedMesh) (obj as THREE.BatchedMesh).dispose() // 釋放實例矩陣、顏色等內部貼圖
   })
 }
 

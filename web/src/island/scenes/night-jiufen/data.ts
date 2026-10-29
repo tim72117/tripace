@@ -2,7 +2,9 @@
 // 進到這個場景才下載;不要從別處靜態 import(會把版面與文章拉進首屏或別的場景)。
 import article from './article.json'
 import teahouseUrl from './assets/amei-teahouse.glb?url'
-import { ISLAND_LAYOUT, PATH_POINT_Y } from './layout'
+import stoneStepsUrl from './assets/stone-steps-5.glb?url'
+import stoneStepsLandingUrl from './assets/stone-steps-landing.glb?url'
+import { ISLAND_LAYOUT, PATH_POINT_Y } from './world'
 import type { ArticleSource } from '../../logic/articleToIsland'
 import type { Model3D } from '../../three/model'
 import type { SceneModule } from '../types'
@@ -14,9 +16,12 @@ const scene: SceneModule = {
   byline: { name: 'tim72117', handle: 'tim72117', articleUrl: '/u/tim72117/night-jiufen' },
   pathPointY: PATH_POINT_Y,
   modelLoaders: import.meta.glob<Model3D>('./models/*.ts', { import: 'default' }),
-  // 阿妹茶樓的高細節版(Blender 腳本 tools/blender/amei_teahouse.py 產出,約 11 公尺寬的主體 → 縮成宣告式版的 1 單位寬,
-  // 所以版面裡的 scale 7 不用改)
-  glbModels: { 'stop-amei-teahouse': { url: teahouseUrl, unit: 1 / 11 } },
+  // 高細節版(Blender 腳本產出,一律以公尺建模、放進場景不換算;宣告式後備版的 unit 對齊同一個真實尺寸)
+  glbModels: {
+    'stop-amei-teahouse': { url: teahouseUrl }, // tools/blender/amei_teahouse.py
+    'deco-stone-steps': { url: stoneStepsUrl }, // tools/blender/stone_steps.py 的 steps-5
+    'deco-stone-steps-landing': { url: stoneStepsLandingUrl }, // 同上,5 階+平台+5 階
+  },
 }
 
 export default scene

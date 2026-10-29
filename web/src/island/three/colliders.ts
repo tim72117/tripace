@@ -5,12 +5,13 @@
 // 站點的石階模型整個略過:人走在石階上的高度與路徑由步道剖面決定(見 walkWorld.ts),石階兩側的牆靠高度差限制擋住。
 import * as THREE from 'three'
 import { convexHull, type Poly } from '../logic/walk'
-import { buildModel, type Model3D } from './model'
+import { buildModel, placementScale, type Model3D } from './model'
 
 export type ColliderPlacement = { model: string; x: number; y: number; z: number; rotY?: number; scale?: number }
 
-// 不擋人的模型:會動或很小的(貓、蒸氣、燈籠)、頭頂的(燈串)、石階(走在上面)
-const NO_COLLIDE = /^(deco-cat|deco-steam|deco-lantern-red|deco-lantern-string|deco-street-lamp|stop-shuqi-stairs|traveler-)/
+// 不擋人的模型:會動或很小的(貓、蒸氣、燈籠)、頭頂的(燈串)。石階(走在上面)不列在這裡:
+// 有宣告 coversPath(自己畫路面)的模型一律不擋人,豎崎路長短兩版與之後新增的石階都適用
+const NO_COLLIDE = /^(deco-cat|deco-steam|deco-lantern-red|deco-lantern-string|deco-street-lamp|traveler-)/
 
 // 部件名稱是「路面/地板/階梯」的不算固體:人走在它上面(輕便路模型的路面是一段段會抬高的方塊)
 const NO_COLLIDE_PART = /^(road|ground|floor|path|step|stair)/i
@@ -26,7 +27,7 @@ export function placementPolys(model: Model3D, p: ColliderPlacement): Poly[] {
   const built = buildModel(model.glb && model.parts.length > 0 ? { ...model, glb: undefined } : model)
   built.root.position.set(p.x, p.y, p.z)
   built.root.rotation.y = p.rotY ?? 0
-  built.root.scale.setScalar(p.scale ?? 1)
+  built.root.scale.setScalar(placementScale(model, p.scale))
   built.root.updateMatrixWorld(true)
   const out: Poly[] = []
   const v = new THREE.Vector3()
@@ -57,7 +58,7 @@ export function buildColliderPolys(placements: ReadonlyArray<ColliderPlacement>,
   const out: Poly[] = []
   for (const p of placements) {
     const m = models[p.model]
-    if (!m || NO_COLLIDE.test(p.model)) continue
+    if (!m || m.coversPath || NO_COLLIDE.test(p.model)) continue
     out.push(...placementPolys(m, p))
   }
   return out

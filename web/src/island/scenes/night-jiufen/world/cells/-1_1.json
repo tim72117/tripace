@@ -1,0 +1,25 @@
+{
+  "format": 1,
+  "cell": "-1_1",
+  "placements": [
+    {"model":"deco-lantern-red","x":-31.34,"z":35.41,"y":1.2,"rotY":0,"scale":0.89,"seed":878372,"layer":"row-lights","source":"rule"},
+    {"model":"deco-lantern-red","x":-27.42,"z":35.25,"y":1.26,"rotY":0,"scale":0.94,"seed":133370,"layer":"row-lights","source":"rule"},
+    {"model":"deco-lantern-red","x":-23.49,"z":35.1,"y":1.31,"rotY":0,"scale":0.88,"seed":770340,"layer":"row-lights","source":"rule"},
+    {"model":"deco-lantern-red","x":-19.56,"z":34.94,"y":1.35,"rotY":0,"scale":0.92,"seed":161538,"layer":"row-lights","source":"rule"},
+    {"model":"deco-lantern-red","x":-10.94,"z":35.02,"y":0.78,"rotY":0,"scale":0.9,"seed":353822,"layer":"row-lights","source":"rule"},
+    {"model":"deco-lantern-red","x":-7.03,"z":35.08,"y":0.76,"rotY":0,"scale":1.06,"seed":408007,"layer":"row-lights","source":"rule"},
+    {"model":"deco-lantern-red","x":-3.13,"z":35.14,"y":0.73,"rotY":0,"scale":1.01,"seed":855977,"layer":"row-lights","source":"rule"},
+    {"model":"deco-tree-banyan","x":-9.43,"z":33.14,"y":0.94,"rotY":3.08,"scale":0.91,"seed":562307,"layer":"banyans","source":"rule"},
+    {"model":"deco-tree-banyan","x":-28.29,"z":35.25,"y":1.26,"rotY":5.61,"scale":1.09,"seed":780255,"layer":"banyans","source":"rule"},
+    {"model":"deco-rock","x":-5.54,"z":49.48,"y":-3.75,"rotY":3.5,"scale":0.82,"seed":648277,"layer":"ground-cover","source":"rule"},
+    {"model":"deco-rock","x":-28.16,"z":44.31,"y":-0.45,"rotY":2.91,"scale":0.97,"seed":815792,"layer":"ground-cover","source":"rule"},
+    {"model":"deco-rock","x":-24.89,"z":45.82,"y":-1.4,"rotY":3.07,"scale":1.11,"seed":352545,"layer":"ground-cover","source":"rule"},
+    {"model":"deco-rock","x":-4.98,"z":35.74,"y":0.57,"rotY":1.19,"scale":1.11,"seed":444434,"layer":"ground-cover","source":"rule"},
+    {"model":"deco-rock","x":-13.15,"z":46.46,"y":-1.8,"rotY":0.92,"scale":1.07,"seed":686319,"layer":"ground-cover","source":"rule"},
+    {"model":"deco-rock","x":-3.35,"z":33.66,"y":0.94,"rotY":0.93,"scale":0.72,"seed":120358,"layer":"ground-cover","source":"rule"},
+    {"model":"deco-bush","x":-18.21,"z":49.3,"y":-2.87,"rotY":4.26,"scale":1.06,"seed":321222,"layer":"ground-cover","source":"rule"},
+    {"model":"deco-bush","x":-12.57,"z":38.79,"y":0,"rotY":0.18,"scale":1.14,"seed":716830,"layer":"ground-cover","source":"rule"},
+    {"model":"deco-rock","x":-19.02,"z":38,"y":0.02,"rotY":2.04,"scale":0.75,"seed":39019,"layer":"ground-cover","source":"rule"},
+    {"model":"deco-bush","x":-9.93,"z":46.92,"y":-2.3,"rotY":6.16,"scale":1.2,"seed":773898,"layer":"ground-cover","source":"rule"}
+  ]
+}

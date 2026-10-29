@@ -3,7 +3,7 @@ import type { Model3D, Part, Vec3 } from '../three/model';
 // 九份老屋 A：依山而建的兩層米白牆小屋，黑瓦（黑色油毛氈）人字屋頂，右側加蓋一間水泥平頂小間。
 // 設計意圖：山城的「基本單位」，沿階地等高線成排擺放；上下兩扇小窗是 emissive 暖黃，
 // 夜晚一扇扇亮起，讓整面山坡變成點點燈火。屋脊沿 X，正面朝 +Z（請讓正面朝向坡下/鏡頭）。
-// 尺寸：寬約 1.2（含加蓋）、深 0.72、高約 0.9。建議 scale 3~4.2（約 3.5~5 格寬）。
+// 尺寸：寬約 1.2（含加蓋）、深 0.72、高約 0.9。真實尺寸約 6.8 m 寬,版面 scale 預設 1,只做小幅變化(真實尺寸見 unit)。
 
 // 三角柱屋頂：cylinder 3 段，旋轉 [-π/2, 0, π/2] 後屋脊沿 X、尖端朝上。
 // depth = 屋頂前後跨距，height = 屋簷到屋脊的高度，baseY = 屋簷高度。
@@ -21,6 +21,7 @@ function gable(name: string, depth: number, length: number, height: number, pos:
 }
 
 const model: Model3D = {
+  unit: 5.546875, // 真實尺寸(1 格 = 1 m):老屋約 6.8 m 寬、5.2 m 高
   palette: {
     wall: '#efe2c8',
     plinth: '#8d8a82',

@@ -1,0 +1,52 @@
+{
+  "stops": [
+    {
+      "stopId": "stop_1",
+      "label": "壱 基山街",
+      "time": "17:30",
+      "emoji": "🏮",
+      "blurb": "人潮正要散去，魚丸湯冒著熱氣，燈籠一盞盞準備亮起。",
+      "model": "stop-jishan-street",
+      "x": -9.375,
+      "z": -2.5,
+      "y": 14.6875,
+      "rotY": 0
+    },
+    {
+      "stopId": "stop_4",
+      "label": "弐 豎崎路石階",
+      "time": "18:30",
+      "emoji": "⛩️",
+      "blurb": "石階一路往上，兩旁紅燈籠接連亮起，這就是九份最被記住的畫面。",
+      "model": "stop-shuqi-stairs",
+      "x": 9.375,
+      "z": 12.5,
+      "y": 5.3125,
+      "rotY": 0
+    },
+    {
+      "stopId": "stop_5",
+      "label": "参 輕便路散步",
+      "time": "19:30",
+      "emoji": "🌙",
+      "blurb": "離開熱鬧的老街，只剩路燈陪著慢慢走，心情跟著沉澱下來。",
+      "model": "stop-qingbian-lane",
+      "x": -6.328125,
+      "z": 22.03125,
+      "y": 5.3125,
+      "rotY": 1.134
+    },
+    {
+      "stopId": "stop_6",
+      "label": "肆 阿妹茶樓",
+      "time": "20:15",
+      "emoji": "🍵",
+      "blurb": "靠著欄杆點一壺茶，看整座山城的燈火與遠方漸暗的海。",
+      "model": "stop-amei-teahouse",
+      "x": -3.125,
+      "z": 7.8125,
+      "y": 11.015625,
+      "rotY": 0
+    }
+  ]
+}

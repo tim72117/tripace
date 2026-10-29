@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import type { Pt } from '../../data/layoutTypes'
 import { baseFieldAt, padWeight } from '../../logic/heightfield'
 import { pointInPolygon } from '../../logic/geometry'
-import { ISLAND_LAYOUT, PATH_POINT_Y, groundY } from './layout'
+import { ISLAND_LAYOUT, PATH_POINT_Y, groundY } from './world'
 
 const L = ISLAND_LAYOUT
 const terrain = L.terrain!
@@ -35,10 +35,10 @@ describe('九份連續地形:站點', () => {
   })
   it('站②③是石階與緩坡模型:y 是最低一階的底面高度,地面不低於它', () => {
     const s2 = stop('stop_4'), s3 = stop('stop_5')
-    expect(s2.y).toBeCloseTo(3.4)
-    expect(s3.y).toBeCloseTo(3.4)
-    expect(groundY(s2.x, s2.z)).toBeGreaterThanOrEqual(s2.y! - 0.05)
-    expect(groundY(s3.x, s3.z)).toBeGreaterThanOrEqual(s3.y! - 0.05)
+    expect(s2.y).toBeCloseTo(5.3125)
+    expect(s3.y).toBeCloseTo(5.3125)
+    expect(groundY(s2.x, s2.z)).toBeGreaterThanOrEqual(s2.y! - 0.08)
+    expect(groundY(s3.x, s3.z)).toBeGreaterThanOrEqual(s3.y! - 0.08)
   })
   it('路線先下再上(接近真實九份):① 基山街最高,② 豎崎路下到最低,④ 茶樓在中間高度(不是最高點)', () => {
     const [y1, y2, y3, y4] = L.stops.map((s) => s.y!)
@@ -50,14 +50,14 @@ describe('九份連續地形:站點', () => {
 })
 
 describe('九份連續地形:步道與地面', () => {
-  it('豎崎路、輕便路、小石階沿中線每 0.5 格取樣:底面 - 0.05 ≤ 地面 ≤ 踏面 + 0.05(不穿出踏面、也不在實心階梯下露空)', () => {
+  it('豎崎路、輕便路、小石階沿中線每 0.5 格取樣:底面 - 0.08 ≤ 地面 ≤ 踏面 + 0.08(不穿出踏面、也不在實心階梯下露空)', () => {
     // 步道點索引(見 layout.ts 的 PATH3)與各段模型的底面高度:11~14 豎崎路(底面 3.4)、18~19 輕便路(3.4)、21~22 小石階(4.9)
-    const base = new Map<number, number>([[11, 3.4], [12, 3.4], [13, 3.4], [14, 3.4], [18, 3.4], [19, 3.4], [21, 4.9], [22, 4.9]])
+    const base = new Map<number, number>([[11, 5.3125], [12, 5.3125], [13, 5.3125], [14, 5.3125], [18, 5.3125], [19, 5.3125], [21, 7.65625], [22, 7.65625]])
     const bad = pathSamples(0.5)
       .filter((p) => base.has(p.i))
       .flatMap((p) => {
         const g = groundY(p.x, p.z)
-        return g > p.y + 0.05 || g < base.get(p.i)! - 0.05 ? [`(${p.x.toFixed(1)}, ${p.z.toFixed(1)}) 地面 ${g.toFixed(2)} 不在 ${base.get(p.i)} ~ ${p.y.toFixed(2)}`] : []
+        return g > p.y + 0.08 || g < base.get(p.i)! - 0.08 ? [`(${p.x.toFixed(1)}, ${p.z.toFixed(1)}) 地面 ${g.toFixed(2)} 不在 ${base.get(p.i)} ~ ${p.y.toFixed(2)}`] : []
       })
     expect(bad).toEqual([])
   })
@@ -82,11 +82,11 @@ describe('九份連續地形:平台', () => {
     expect(pads).toHaveLength(22)
     for (const [i, p] of pads.entries()) for (const [x, z] of p.outline) expect(pointInPolygon(x, z, L.outline), `pad[${i}] ${x},${z}`).toBe(true)
   })
-  it('每塊平台的切填量不超過 3 格(平台不會變成懸崖或深坑)', () => {
+  it('每塊平台的切填量不超過 4.7 m(平台不會變成懸崖或深坑)', () => {
     for (const [i, p] of pads.entries()) {
       const ys = area(p.outline).map(([x, z]) => baseFieldAt({ ...terrain, pads: [] }, x, z))
-      expect(Math.max(...ys) - p.y, `pad[${i}] 切`).toBeLessThanOrEqual(3)
-      expect(p.y - Math.min(...ys), `pad[${i}] 填`).toBeLessThanOrEqual(3)
+      expect(Math.max(...ys) - p.y, `pad[${i}] 切`).toBeLessThanOrEqual(4.6875)
+      expect(p.y - Math.min(...ys), `pad[${i}] 填`).toBeLessThanOrEqual(4.6875)
     }
   })
   it('平台內部高度精確等於 y', () => {
@@ -111,9 +111,9 @@ describe('九份連續地形:散落物', () => {
     for (const p of L.scatter.filter((q) => /^deco-house-old/.test(q.model))) expect(p.y, `house ${p.x},${p.z}`).toBeCloseTo(groundY(p.x, p.z), 1)
   })
   it('小石階用 keepY 保留明確的腳底高度', () => {
-    const s = L.scatter.find((p) => p.model === 'stop-shuqi-stairs')!
+    const s = L.scatter.find((p) => p.model === 'deco-shuqi-stairs-small')!
     expect(s.keepY).toBe(true)
-    expect(s.y).toBeCloseTo(4.9)
+    expect(s.y).toBeCloseTo(7.65625)
   })
 })
 
@@ -122,13 +122,13 @@ describe('九份連續地形:昇平戲院廣場', () => {
   it('戲院放在廣場平台上,keepY 保留明確的腳底高度,y 與該處地面相同', () => {
     expect(theater).toBeDefined()
     expect(theater.keepY).toBe(true)
-    expect(theater.y).toBeCloseTo(3.4)
-    for (const [dx, dz] of [[-3.5, -2.8], [3.5, -2.8], [0, 2.9]]) expect(groundY(theater.x + dx, theater.z + dz), `${dx},${dz}`).toBeCloseTo(3.4, 1)
+    expect(theater.y).toBeCloseTo(5.3125)
+    for (const [dx, dz] of [[-5.47, -4.38], [5.47, -4.38], [0, 4.53]]) expect(groundY(theater.x + dx, theater.z + dz), `${dx},${dz}`).toBeCloseTo(5.3125, 1)
   })
-  it('廣場擺設都放在平台上(高度 3.4),戲院不壓到步道', () => {
-    const near = L.scatter.filter((p) => p !== theater && p.x >= 11 && p.x <= 22 && p.z >= 14 && p.z <= 18)
+  it('廣場擺設都放在平台上(高度 5.31),戲院不壓到步道', () => {
+    const near = L.scatter.filter((p) => p !== theater && p.x >= 17.1875 && p.x <= 34.375 && p.z >= 21.875 && p.z <= 28.125)
     expect(near.length).toBeGreaterThanOrEqual(8)
-    for (const p of near) expect(groundY(p.x, p.z), `${p.model} ${p.x},${p.z}`).toBeCloseTo(3.4, 1)
-    expect(Math.min(...pathSamples(0.5).map((q) => Math.hypot(q.x - theater.x, q.z - theater.z)))).toBeGreaterThan(5)
+    for (const p of near) expect(groundY(p.x, p.z), `${p.model} ${p.x},${p.z}`).toBeCloseTo(5.3125, 1)
+    expect(Math.min(...pathSamples(0.5).map((q) => Math.hypot(q.x - theater.x, q.z - theater.z)))).toBeGreaterThan(7.8)
   })
 })

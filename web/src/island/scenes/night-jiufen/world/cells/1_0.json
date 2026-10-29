@@ -1,0 +1,25 @@
+{
+  "format": 1,
+  "cell": "1_0",
+  "placements": [
+    {"model":"deco-lantern-red","x":33.13,"z":23.75,"y":5.31,"rotY":-1.31,"scale":1.07,"seed":739707,"layer":"plaza","source":"rule"},
+    {"model":"deco-house-old-b","x":41.79,"z":22.22,"y":2.5,"rotY":0.09,"scale":0.93,"seed":528866,"layer":"houses","source":"rule"},
+    {"model":"deco-lantern-red","x":40.53,"z":26.34,"y":2.2,"rotY":0.09,"scale":0.98,"seed":639966,"layer":"houses","source":"rule"},
+    {"model":"deco-house-old-a","x":39.1,"z":13.93,"y":6.41,"rotY":0.17,"scale":1.07,"seed":920195,"layer":"houses","source":"rule"},
+    {"model":"deco-house-old-a","x":36.76,"z":6.38,"y":10,"rotY":-0.06,"scale":0.93,"seed":26577,"layer":"houses","source":"rule"},
+    {"model":"deco-lantern-red","x":38.28,"z":25.1,"y":2.5,"rotY":0,"scale":0.97,"seed":218314,"layer":"row-lights","source":"rule"},
+    {"model":"deco-lantern-red","x":42.18,"z":24.96,"y":2.5,"rotY":0,"scale":0.89,"seed":825737,"layer":"row-lights","source":"rule"},
+    {"model":"deco-lantern-red","x":36.71,"z":15.98,"y":6.4,"rotY":0,"scale":0.87,"seed":694290,"layer":"row-lights","source":"rule"},
+    {"model":"deco-lantern-red","x":40.61,"z":15.7,"y":6.41,"rotY":0,"scale":1.05,"seed":331526,"layer":"row-lights","source":"rule"},
+    {"model":"deco-lantern-red","x":34.36,"z":8.42,"y":10,"rotY":0,"scale":1.02,"seed":226087,"layer":"row-lights","source":"rule"},
+    {"model":"deco-lantern-red","x":38.26,"z":8.24,"y":10,"rotY":0,"scale":0.92,"seed":93768,"layer":"row-lights","source":"rule"},
+    {"model":"deco-tree-banyan","x":52.86,"z":12.74,"y":0.72,"rotY":2.33,"scale":1.04,"seed":532712,"layer":"banyans","source":"rule"},
+    {"model":"deco-tree-banyan","x":62.09,"z":9.57,"y":7.18,"rotY":1.54,"scale":0.88,"seed":743162,"layer":"banyans","source":"rule"},
+    {"model":"deco-tree-banyan","x":55.25,"z":24.92,"y":2.43,"rotY":6.07,"scale":1.03,"seed":833142,"layer":"banyans","source":"rule"},
+    {"model":"deco-bush","x":35.1,"z":14.96,"y":5.77,"rotY":1.75,"scale":0.92,"seed":636823,"layer":"ground-cover","source":"rule"},
+    {"model":"deco-bush","x":37.95,"z":29.86,"y":1.55,"rotY":3.25,"scale":1.19,"seed":440018,"layer":"ground-cover","source":"rule"},
+    {"model":"deco-bush","x":42.77,"z":2.44,"y":9.96,"rotY":1.46,"scale":1.14,"seed":89089,"layer":"ground-cover","source":"rule"},
+    {"model":"deco-cliff-rock","x":45.43,"z":13.22,"y":2.79,"rotY":5.86,"scale":1.02,"tilt":[0.28,-1.12],"seed":371120,"layer":"cliff-rocks","source":"rule"},
+    {"model":"deco-cliff-rock","x":61.46,"z":0.28,"y":8.24,"rotY":5.22,"scale":1.12,"tilt":[0.32,0.69],"seed":411006,"layer":"cliff-rocks","source":"rule"}
+  ]
+}

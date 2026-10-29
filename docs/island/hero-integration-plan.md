@@ -1,5 +1,7 @@
 # 縮小版 3D 島進入首頁 hero:版面與整合設計
 
+> **資料搬遷與單位(2026-10-29)**:九份的版面已從 `scenes/night-jiufen/layout.ts` 拆成 `scenes/night-jiufen/world/` 的 JSON 資料檔(地形、步道、站點、鏡頭、光線;擺放一格一檔)與程序化規則 `rules.ts`,舊的 `layout.ts` 已刪除。世界單位同時統一為 1 格 = 1 m,所有座標與高度精確換算為舊值 × 1.5625,模型改由自己的 `unit` 決定真實尺寸(版面 scale 只做小幅變化)。本文的檔名、數值與「建議 scale」是換算前的舊紀錄;現況見 `web/src/island/README.md` 與 `scenes/night-jiufen/world/README.md`。
+>
 > **路徑對照(2026-10-27)**:本文寫於這個功能還是獨立子專案 `web/island-demo/` 的時候。現在已搬進主網站並轉為正式,
 > 文中的 `web/island-demo/…` 請對照下表(內容本身沒有改寫,只在這裡標註路徑):
 >

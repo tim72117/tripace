@@ -3,9 +3,27 @@
 // 契約的步道只有平面座標,高度由階地高度推得:沿曲線取樣 heightAt,再做移動平均把階地交界的
 // 垂直落差變成緩坡(旅人不會瞬間跳高),貼圖用橫向條紋暗示一級一級的石階。
 import * as THREE from 'three'
-import type { IslandLayout } from '../data/layoutTypes'
+import type { IslandLayout, Placement } from '../data/layoutTypes'
 import type { PathCurve } from '../logic/pathCurve'
 import { buildPathProfile } from '../logic/pathProfile'
+import { placementScale, type Model3D } from './model'
+
+// 步道經過自己畫路面的模型(石階)時沉進模型裡的深度(m):比一階踢面深,斜坡才不會在每一階後段穿出踏面
+const COVERED_SINK = 0.3
+
+// pathCoverTest——(x, z) 是否落在某個 coversPath 模型(石階)的範圍內。模型的 -Z/+Z 是長度方向,rotY 依 three 的 rotation.y。
+export function pathCoverTest(placements: ReadonlyArray<Placement>, models: Record<string, Model3D>): (x: number, z: number) => boolean {
+  const covers = placements.flatMap((p) => {
+    const m = models[p.model]
+    if (!m?.coversPath) return []
+    return [{ p, k: placementScale(m, p.scale), c: Math.cos(p.rotY ?? 0), s: Math.sin(p.rotY ?? 0), ...m.coversPath }]
+  })
+  return (x, z) => covers.some(({ p, k, c, s, halfWidth, halfLength }) => {
+    const dx = x - p.x, dz = z - p.z
+    const lx = (dx * c - dz * s) / k, lz = (dx * s + dz * c) / k
+    return Math.abs(lx) <= halfWidth && Math.abs(lz) <= halfLength
+  })
+}
 
 export type PathMesh = {
   mesh: THREE.Mesh
@@ -37,6 +55,7 @@ export function buildPathMesh(
   curve: PathCurve,
   heightAt: (x: number, z: number) => number,
   controlY?: ReadonlyArray<number>,
+  covered?: (x: number, z: number) => boolean,
 ): PathMesh {
   const profile = buildPathProfile(layout.path.points, curve, heightAt, controlY)
   const profileY = (s: number, x: number, z: number): number => profile.at(s, x, z)
@@ -67,9 +86,9 @@ export function buildPathMesh(
     const p = curve.at(s)
     const ox = -p.dirZ * half
     const oz = p.dirX * half
-    const y = smooth[i] + 0.06
+    const y = smooth[i] + (covered?.(p.x, p.z) ? -COVERED_SINK : 0.06)
     pos.push(p.x + ox, y, p.z + oz, p.x - ox, y, p.z - oz)
-    uv.push(0, s / 1.2, 1, s / 1.2)
+    uv.push(0, s / 1.88, 1, s / 1.88)
     if (i > 0) { const a = (i - 1) * 2; idx.push(a, a + 2, a + 1, a + 1, a + 2, a + 3) }
   })
   const g = new THREE.BufferGeometry()

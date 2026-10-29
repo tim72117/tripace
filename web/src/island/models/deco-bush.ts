@@ -1,8 +1,9 @@
 import type { Model3D } from '../three/model';
 
 // 灌木叢：四團大小不一的低多邊形綠球加兩朵藍紫小花，填補階地邊緣與屋角的空隙。
-// 尺寸：寬約 0.9、高約 0.5。建議 scale 1.2~2.2。
+// 尺寸：寬約 0.9、高約 0.5。版面 scale 預設 1,只做小幅變化(真實尺寸見 unit)。
 const model: Model3D = {
+  unit: 2.8125, // 真實尺寸(1 格 = 1 m):灌木約 1.3~1.6 m 高
   palette: {
     leaf: '#4f7a40',
     leafDark: '#3b6234',

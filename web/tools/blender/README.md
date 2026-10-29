@@ -13,9 +13,13 @@ node tools/model-preview/server.mjs            # http://localhost:5190
 cp tools/blender/out/amei-teahouse.glb src/island/scenes/night-jiufen/assets/amei-teahouse.glb
 ```
 
+## Windows
+`winget install BlenderFoundation.Blender.LTS.4.5`(已用 4.5.10 驗證 `amei_teahouse.py` 可匯出),執行檔在 `C:\Program Files\Blender Foundation\Blender 4.5lender.exe`,上面流程的 macOS 路徑換成它即可(Git Bash 用 `/c/Program Files/Blender Foundation/Blender 4.5/blender.exe`)。
+
 ## 檔案
 - `kit.py`:共用工具(含 `anchor()`:放不畫幾何的命名錨點)。座標一律用 glTF/three 的(x 右、y 上、z 前,公尺,原點在腳底中心);按材質累積 bmesh、最後每個材質一個物件;形狀(方塊、斜樑、截頭錐、圓柱、橢球)自己建,不依賴 `bpy.ops`。
 - `amei_teahouse.py`:阿妹茶樓。腳本內有**數字驗證**(尺寸、原點、面數、材質數),不合格就不匯出。
+- `stone_steps.py`:石階地形磚,一次匯出 8 種樣式(`steps-5`、`steps-10`、`steps-landing` 中間有平台、`steps-to-landing`、`landing-to-steps`、`landing`、`turn-left`、`turn-right`),寬 3 m、階高 0.18、階深 0.36。頭尾對齊可串接:原點在入口邊中心,出口點與朝向在各自的 `.stats.json` 的 `exit`,模型內有 `Socket_bottom`/`Socket_top`/`Socket_rail_L`/`Socket_rail_R` 空節點,`.stats.json` 的 `dims` 記錄階高階深、總長總高、尾端平台起點比例。執行:`blender --background --python tools/blender/stone_steps.py -- tools/blender/out [--render] [樣式名…]`。
 - `out/`:WIP 輸出(已 gitignore)。
 
 ## 約定與限制

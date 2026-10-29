@@ -17,10 +17,14 @@ export type ResolveOpts = {
   radiusOf: (p: Placement) => number
 }
 
-// 物件可墊高的上限(格):蒸氣、掛在牆上的燈等。
-export const MAX_RAISE = 4
+// 物件可墊高的上限(格,1 格 = 1 m):蒸氣、掛在牆上的燈等。
+export const MAX_RAISE = 6.25
 // 貼坡物件可埋進坡面的深度上限(格)。
-export const MAX_SINK = 1
+export const MAX_SINK = 1.56
+// 完整版與縮小版共用的避障參數(格):站點建築周圍保留半徑、離島緣距離、單一物件避障半徑的上限
+export const STOP_CLEAR = 6.25
+export const EDGE_CLEAR = 1.56
+export const MAX_SCATTER_RADIUS = 1.88
 
 type Ctx = Pick<IslandLayout, 'outline' | 'topY' | 'terraces' | 'slopes' | 'terrain' | 'stops' | 'river'>
 
@@ -41,15 +45,17 @@ export function resolveScatter(
     // 離島邊緣:用輪廓各邊的最短距離(閉合多邊形)
     const ring = [...layout.outline, layout.outline[0]]
     if (distToPolyline(p.x, p.z, ring) < opts.edgeClear + r * 0.5) { drop('離島邊緣太近'); continue }
-    if (opts.pathLine.length > 1 && distToPolyline(p.x, p.z, opts.pathLine) < opts.pathWidth / 2 + r) { drop('擋在步道上'); continue }
+    // keepY = 刻意擺在指定位置與高度的物件(石階、地標):本來就壓在步道上、坡上或站點旁,不做這三項檢查
+    const authored = p.keepY === true
+    if (!authored && opts.pathLine.length > 1 && distToPolyline(p.x, p.z, opts.pathLine) < opts.pathWidth / 2 + r) { drop('擋在步道上'); continue }
     if (riverPts.length > 1 && distToPolyline(p.x, p.z, riverPts) < riverHalf + r) { drop('落在河道上'); continue }
-    if (layout.stops.some((s) => dist([p.x, p.z], [s.x, s.z]) < opts.stopClear + r)) { drop('擠在站點建築旁'); continue }
+    if (!authored && layout.stops.some((s) => dist([p.x, p.z], [s.x, s.z]) < opts.stopClear + r)) { drop('擠在站點建築旁'); continue }
     // 階地邊緣:中心與四個方向的取樣點高度必須一致,否則物件會一半懸空
     const h = heightAt(layout, p.x, p.z)
     const around = [[r, 0], [-r, 0], [0, r], [0, -r]].map(([dx, dz]) => heightAt(layout, p.x + dx, p.z + dz))
     // 連續地形(terrain)的坡面本來就有高低差:只剔除太陡的(落差超過半徑的 0.9 倍,約 42°),不要求等高
     const flatTol = layout.terrain ? r * 0.9 : 1e-6
-    if (!p.tilt && around.some((a) => Math.abs(a - h) > flatTol)) { drop(layout.terrain ? '坡太陡' : '騎在階地邊緣'); continue }
+    if (!authored && !p.tilt && around.some((a) => Math.abs(a - h) > flatTol)) { drop(layout.terrain ? '坡太陡' : '騎在階地邊緣'); continue }
     // y 的規則:契約的 y 是「腳底高度」。放在攤位上方的蒸氣這類物件會刻意把 y 墊高,所以
     // 只要 y 落在「地面到地面上方 MAX_RAISE」之間就保留;沒填或不合理(低於地面、高得離譜)
     // 一律以地面高度為準,不剔除、仍保留位置。

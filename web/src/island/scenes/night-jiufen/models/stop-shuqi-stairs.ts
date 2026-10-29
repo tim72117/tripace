@@ -4,20 +4,20 @@ import type { Model3D, Part } from '../../../three/model';
 // 設計意圖：
 //   - 石階沿 Z 軸：+Z 端（Z=0.5）是最低一階、貼地；往 -Z 爬升，-Z 端（Z=-0.5）頂面高 RISE。
 //     模型「正面朝 +Z」= 從山下往上看的視角，鏡頭在坡下就能看到整段階梯往上延伸。
-//   - 12 階實心石塊，深淺兩種石色交錯，讓每一階的高低一眼可辨。
+//   - 實心石塊一階一階,深淺兩種石色交錯,讓每一階的高低一眼可辨。階數由真實長度推出(見 shuqiStairsModel)。
 //   - 兩側斜牆 + 外側四棟店屋立面（往上越高），立面朝內的窗是 emissive 暖光。
 //   - 兩側各 4 盞紅燈籠沿坡度排列、各自 sway；它們是「一盞接一盞亮起」最該被看見的燈。
-// 尺寸：長 1（Z）、全寬約 0.47（含兩側立面）、最高約 0.88（頂端立面）、階梯頂面高 0.43。
-// 建議 scale 14 → 約 14 格長、階梯爬升 6 格、寬 6.6 格；rotY 讓 -Z 朝上坡方向。
-// 縮小 scale（例如 4.7 → 爬升 2 格）也可當階地之間的連接小階梯。
+// 尺寸(模型單位):長 1（Z）、全寬約 0.47（含兩側立面）、最高約 0.88（頂端立面）、階梯頂面高 0.43。
+// 真實尺寸 = 模型單位 × unit(unit = 石階長度,公尺);rotY 讓 -Z 朝上坡方向。
 
-const STEPS = 12;
 const RISE = 0.43;
+// 踢面的目標高度(公尺):豎崎路的石階約 17 cm 一階。階數由真實長度推出,長短石階的每一階都是人的尺度。
+const TARGET_RISER_M = 0.17;
 const STEP_W = 0.22;
 const SLOPE = Math.atan(RISE); // 斜牆傾角
 const heightAt = (z: number) => (0.5 - z) * RISE; // 該 Z 處的階梯頂面高度
 
-const steps: Part[] = Array.from({ length: STEPS }, (_, i): Part => {
+const stepParts = (STEPS: number): Part[] => Array.from({ length: STEPS }, (_, i): Part => {
   const h = ((i + 1) / STEPS) * RISE;
   const z = 0.5 - (i + 0.5) / STEPS;
   return {
@@ -64,19 +64,29 @@ const facades: Part[] = FACADES.flatMap(([side, z, len, top, color], i): Part[] 
   { name: `facadeWin${i}`, shape: { type: 'box', size: [0.006, 0.05, len * 0.5] }, color: '$warm', emissive: '$warm', position: [side * 0.152, Math.min(heightAt(z) + 0.14, top - 0.06), z] },
 ]);
 
-const model: Model3D = {
-  palette: {
-    stone: '#8d8a82',
-    stoneLight: '#a39f95',
-    wallStone: '#6f6b64',
-    wall: '#efe2c8',
-    brick: '#a8553a',
-    roof: '#2e3440',
-    warm: '#ffc15a',
-    lantern: '#d63a2f',
-    glow: '#ff5a2e',
-  },
-  parts: [...steps, ...walls, ...facades, ...lanterns],
-};
+// shuqiStairsModel——unit = 石階長度(公尺)。階數 = 爬升 ÷ 目標踢面高,所以 22 m 長的豎崎路約 55 階、
+// 7.8 m 長的小石階約 20 階,每階都是約 17 cm 高、40 cm 深。
+export function shuqiStairsModel(unit: number): Model3D {
+  const steps = Math.max(2, Math.round((RISE * unit) / TARGET_RISER_M));
+  return {
+    unit, // 真實尺寸(1 格 = 1 m):石階長度
+    coversPath: { halfWidth: STEP_W / 2, halfLength: 0.5 }, // 石階自己畫踏面,步道帶子在這段沉進去
+    palette: {
+      stone: '#8d8a82',
+      stoneLight: '#a39f95',
+      wallStone: '#6f6b64',
+      wall: '#efe2c8',
+      brick: '#a8553a',
+      roof: '#2e3440',
+      warm: '#ffc15a',
+      lantern: '#d63a2f',
+      glow: '#ff5a2e',
+    },
+    parts: [...stepParts(steps), ...walls, ...facades, ...lanterns],
+  };
+}
+
+// 站點②的豎崎路:約 22 m 長、爬升 9.4 m
+const model: Model3D = shuqiStairsModel(21.875);
 
 export default model;

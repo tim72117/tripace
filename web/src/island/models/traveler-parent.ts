@@ -2,8 +2,9 @@ import type { Model3D } from '../three/model';
 
 // 旅人（大人）：親子小旅行中的家長。青綠色外套、芥末黃小背包、深色短髮。
 // 動畫：身體群組 bob 上下彈跳；手腳樞紐在肩、髖關節，以 swing 對角擺動（左手配右腳）。
-// 尺寸：高約 1.05、寬約 0.42。建議 scale 1.6~1.8（和 traveler-child 用同一個 scale，身高比例才對）。
+// 尺寸：高約 1.05、寬約 0.42。unit 1.7 → 真實身高約 1.73 m(和 traveler-child 用同一個 unit,身高比例才對)。
 const model: Model3D = {
+  unit: 1.7, // 真實尺寸(1 格 = 1 m):成人約 1.73 m 高
   palette: {
     jacket: '#3f7d8c',
     jacketDark: '#2f6270',

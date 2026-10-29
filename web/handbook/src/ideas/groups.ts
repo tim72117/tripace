@@ -45,6 +45,6 @@ export const IDEA_GROUPS: IdeaGroupMeta[] = [
   {
     id: 'tech-research',
     title: '外部專案技術研究',
-    blurb: '拆解外部專案的技術架構,整理可借鏡到 tripace 的做法;第一份是開源瀏覽器 MMO World of ClaudeCraft。',
+    blurb: '拆解外部專案的技術架構,整理可借鏡到 tripace 的做法(第一份是開源瀏覽器 MMO World of ClaudeCraft),以及據此在 tripace 實作的框架與待辦。',
   },
 ]

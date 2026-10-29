@@ -5,41 +5,41 @@ import type { SceneModule } from '../types'
 
 const OUTLINE: Pt[] = Array.from({ length: 14 }, (_, i) => {
   const a = (i / 14) * Math.PI * 2
-  const r = 24 + Math.sin(i * 2.3) * 2.5 // 略不規則
+  const r = 37.5 + Math.sin(i * 2.3) * 3.91 // 略不規則(1 格 = 1 m)
   return [Math.round(Math.cos(a) * r * 10) / 10, Math.round(Math.sin(a) * r * 10) / 10]
 })
 
-const PATH_POINTS: Pt[] = [[-16, 10], [-10, 12], [-3, 9], [3, 4], [9, 2], [14, -4], [12, -11]]
+const PATH_POINTS: Pt[] = [[-25, 15.63], [-15.63, 18.75], [-4.69, 14.06], [4.69, 6.25], [14.06, 3.13], [21.88, -6.25], [18.75, -17.19]]
 
 const STOPS: StopAnchor[] = [
-  { stopId: 'stop_a', label: '壱 港口小屋', time: '09:30', model: 'deco-house-old-a', x: -10, z: 15, rotY: 0, scale: 5 },
-  { stopId: 'stop_b', label: '弐 市集', time: '11:30', model: 'deco-stall', x: 3, z: 8, rotY: -0.4, scale: 2.4 },
-  { stopId: 'stop_c', label: '参 山邊老屋', time: '14:00', model: 'deco-house-old-b', x: 14, z: -8, rotY: 0.3, scale: 4 },
+  { stopId: 'stop_a', label: '壱 港口小屋', time: '09:30', model: 'deco-house-old-a', x: -15.63, z: 23.44, rotY: 0, scale: 1.41 },
+  { stopId: 'stop_b', label: '弐 市集', time: '11:30', model: 'deco-stall', x: 4.69, z: 12.5, rotY: -0.4, scale: 1.12 },
+  { stopId: 'stop_c', label: '参 山邊老屋', time: '14:00', model: 'deco-house-old-b', x: 21.88, z: -12.5, rotY: 0.3, scale: 1.13 },
 ]
 
 // 連續地形:南邊低(海岸)往北升高,一條東西向的山脊,三塊削平的平台(放三站)——也是引擎高度場原語的測試台
 const rect = (cx: number, cz: number, w: number, d: number): Pt[] => [[cx - w / 2, cz - d / 2], [cx + w / 2, cz - d / 2], [cx + w / 2, cz + d / 2], [cx - w / 2, cz + d / 2]]
 const TERRAIN: TerrainSpec = {
-  ramp: { from: [0, 24], to: [0, -24], y0: 0, y1: 6 },
+  ramp: { from: [0, 37.5], to: [0, -37.5], y0: 0, y1: 9.38 },
   features: [
-    { kind: 'bump', x: -8, z: -8, rx: 13, rz: 10, rot: 0.4, height: 4 },
-    { kind: 'ridge', points: [[-22, -10, 2], [0, -15, 4], [20, -8, 2.5]], halfWidth: 8 },
+    { kind: 'bump', x: -12.5, z: -12.5, rx: 20.31, rz: 15.63, rot: 0.4, height: 6.25 },
+    { kind: 'ridge', points: [[-34.38, -15.63, 3.13], [0, -23.44, 6.25], [31.25, -12.5, 3.91]], halfWidth: 12.5 },
   ],
-  noise: { amp: 0.5, scale: 7, seed: 5 },
+  noise: { amp: 0.78, scale: 10.94, seed: 5 },
   pads: [
-    { outline: rect(-10, 15, 9, 7), y: 0.8, blend: 3, color: '#c9bfa0' },
-    { outline: rect(3, 8, 7, 6), y: 1.6, blend: 3, color: '#c9bfa0' },
-    { outline: rect(14, -8, 9, 8), y: 4.2, blend: 3.5, color: '#c9bfa0' },
+    { outline: rect(-15.63, 23.44, 14.06, 10.94), y: 1.25, blend: 4.69, color: '#c9bfa0' },
+    { outline: rect(4.69, 12.5, 10.94, 9.38), y: 2.5, blend: 4.69, color: '#c9bfa0' },
+    { outline: rect(21.88, -12.5, 14.06, 12.5), y: 6.56, blend: 5.47, color: '#c9bfa0' },
   ],
-  colors: { beachY: 0.7, beach: '#d9c9a0' },
+  colors: { beachY: 1.09, beach: '#d9c9a0' },
 }
 
 const TREES: Array<[number, number, string]> = [
-  [-18, -4, 'deco-tree-pine'], [-14, -10, 'deco-tree-pine'], [-6, -14, 'deco-tree-banyan'], [2, -16, 'deco-tree-pine'],
-  [8, -15, 'deco-bush'], [18, 4, 'deco-tree-pine'], [16, 10, 'deco-bush'], [-2, 18, 'deco-bush'], [8, 17, 'deco-rock'],
-  [-20, 6, 'deco-rock'], [-8, 2, 'deco-bush'], [6, -6, 'deco-rock'],
+  [-28.13, -6.25, 'deco-tree-pine'], [-21.88, -15.63, 'deco-tree-pine'], [-9.38, -21.88, 'deco-tree-banyan'], [3.13, -25, 'deco-tree-pine'],
+  [12.5, -23.44, 'deco-bush'], [28.13, 6.25, 'deco-tree-pine'], [25, 15.63, 'deco-bush'], [-3.13, 28.13, 'deco-bush'], [12.5, 26.56, 'deco-rock'],
+  [-31.25, 9.38, 'deco-rock'], [-12.5, 3.13, 'deco-bush'], [9.38, -9.38, 'deco-rock'],
 ]
-const SCATTER: Placement[] = TREES.map(([x, z, model], i) => ({ model, x, z, rotY: i * 0.7, scale: model.startsWith('deco-tree') ? 3.5 : 1.6, seed: 100 + i }))
+const SCATTER: Placement[] = TREES.map(([x, z, model], i) => ({ model, x, z, rotY: i * 0.7, seed: 100 + i })) // 大小由模型的 unit 決定(1 格 = 1 m)
 
 // 白天為主:08:00 ~ 18:00,沒有燈籠光(lanternGlow 全 0)
 const day = (time: string, skyTop: string, skyBottom: string, sunIntensity: number, sunElevationDeg: number) => ({
@@ -50,11 +50,11 @@ const day = (time: string, skyTop: string, skyBottom: string, sunIntensity: numb
 const layout: IslandLayout = {
   outline: OUTLINE,
   topY: 0,
-  sea: { y: -2.5, color: '#3b78a8' },
-  thickness: 6,
-  river: { points: [], width: 2 },
+  sea: { y: -3.91, color: '#3b78a8' },
+  thickness: 9.38,
+  river: { points: [], width: 3.13 },
   terrain: TERRAIN,
-  path: { points: PATH_POINTS, width: 2 },
+  path: { points: PATH_POINTS, width: 3.13 },
   stops: STOPS,
   scatter: SCATTER,
   lighting: [

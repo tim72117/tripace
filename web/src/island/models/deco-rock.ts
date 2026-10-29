@@ -1,8 +1,9 @@
 import type { Model3D } from '../three/model';
 
 // 岩石：九份山壁常見的灰色砂岩塊，一大一小、兩顆碎石加一點青苔。放在階地崖腳、島的邊緣。
-// 尺寸：寬約 0.9、高約 0.5。建議 scale 1~2.5。
+// 尺寸：寬約 0.9、高約 0.5。版面 scale 預設 1,只做小幅變化(真實尺寸見 unit)。
 const model: Model3D = {
+  unit: 2.65625, // 真實尺寸(1 格 = 1 m):石塊約 2.5 m 寬
   palette: {
     stone: '#8d8a82',
     stoneDark: '#6e6b64',

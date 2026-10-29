@@ -1,6 +1,8 @@
 # 夜遊九份島:連續地形重新設計(2026-10)
 
-> **現況(2026-10-28):第一版與第二版(第 10 節,真實高度順序)都已實作,目前 `layout.ts` 是第二版**;下列「與本文的差異」是第一版的。引擎在 `web/src/island/logic/heightfield.ts`、`three/terrainField.ts`,九份資料在 `scenes/night-jiufen/layout.ts`,貼合驗證在 `scenes/night-jiufen/terrain.test.ts`。與本文的差異:屋舍實際約 34 棟(屋排只有 3 格深,設計估的 70~90 棟排不下)、沒有街燈(輕便路與小石階的站點腳印內不放)、導覽結束的過肩鏡頭未做(每站只用一個鏡頭)、`islandRadius` 沿用輪廓推算值(約 47)而不是 44、封面距離依畫面比例拉遠(`fitCoverToAspect`)。
+> **資料搬遷與單位(2026-10-29)**:九份的版面已從 `scenes/night-jiufen/layout.ts` 拆成 `scenes/night-jiufen/world/` 的 JSON 資料檔(地形、步道、站點、鏡頭、光線;擺放一格一檔)與程序化規則 `rules.ts`,舊的 `layout.ts` 已刪除。世界單位同時統一為 1 格 = 1 m,所有座標與高度精確換算為舊值 × 1.5625,模型改由自己的 `unit` 決定真實尺寸(版面 scale 只做小幅變化)。本文的檔名、數值與「建議 scale」是換算前的舊紀錄;現況見 `web/src/island/README.md` 與 `scenes/night-jiufen/world/README.md`。
+>
+> **現況(2026-10-28):第一版與第二版(第 10 節,真實高度順序)都已實作,當時的 `layout.ts` 是第二版(2026-10-29 起改為 `world/` 資料檔,見上方說明)**;下列「與本文的差異」是第一版的。引擎在 `web/src/island/logic/heightfield.ts`、`three/terrainField.ts`,九份資料在 `scenes/night-jiufen/layout.ts`,貼合驗證在 `scenes/night-jiufen/terrain.test.ts`。與本文的差異:屋舍實際約 34 棟(屋排只有 3 格深,設計估的 70~90 棟排不下)、沒有街燈(輕便路與小石階的站點腳印內不放)、導覽結束的過肩鏡頭未做(每站只用一個鏡頭)、`islandRadius` 沿用輪廓推算值(約 47)而不是 44、封面距離依畫面比例拉遠(`fitCoverToAspect`)。
 > 性質:重構規劃(美術/關卡設計)。只描述資料,不含程式改動。
 > 對象:`web/src/island/scenes/night-jiufen/layout.ts` 改用 `layout.terrain`(`TerrainSpec`,實作在 `logic/heightfield.ts`)取代 `terraces` / `slopes`。
 > 數值驗證方式:本文所有「natural / 實際高度」都是把 `logic/heightfield.ts` 原樣複製出來、代入本文參數算出來的(cosFall 衰減、pad 用 smoothstep blend、`heightAt` 夾在 `topY` 以上)。只要引擎公式沒改,照抄就會得到同樣的高度。

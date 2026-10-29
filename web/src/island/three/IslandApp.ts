@@ -12,15 +12,19 @@ import { lanternGlowAt } from '../logic/lanternSchedule'
 import { parseTime, sampleLight } from '../logic/lighting'
 import { buildPathCurve } from '../logic/pathCurve'
 import { configFor, type Quality } from '../logic/quality'
-import { resolveScatter } from '../logic/scatterResolve'
+import { EDGE_CLEAR, MAX_SCATTER_RADIUS, resolveScatter, STOP_CLEAR } from '../logic/scatterResolve'
 import { heightAt as heightAtLayout } from '../logic/terrain'
 import { coverKey, fitCoverToAspect, tourKeyframes, type CameraKey } from '../logic/tour'
 import { activeStopIndex, travelerArc } from '../logic/travel'
 import { buildLanterns, type Lanterns } from './lanterns'
-import { buildLights } from './lighting'
+import { buildLights, sunDirection } from './lighting'
 import { buildParticles } from './particles'
-import { buildPathMesh } from './pathMesh'
+import { buildPathMesh, pathCoverTest } from './pathMesh'
 import { buildScatter } from './scatter'
+import { createCellRuntime, type CellRuntime } from './world/cellRuntime'
+import { DEFAULT_GRID } from './world/cellSplit'
+import { DEFAULT_GOVERNOR, initGovernor, stepGovernor, type GovernorState } from '../logic/world/governor'
+import { quantizeHalf, shadowHalfSize, type ShadowFrameCfg } from '../logic/world/shadowFrame'
 import { buildSea, type Sea } from './sea'
 import { buildSky } from './sky'
 import { buildStops, type Stops } from './stops'
@@ -31,7 +35,7 @@ import { Explorer } from './explorer'
 import { buildPathProfile } from '../logic/pathProfile'
 import { captureImage } from './capture'
 import { disposeObject, disposeRenderer } from './dispose'
-import type { Model3D } from './model'
+import { placementScale, type Model3D } from './model'
 
 export type IslandAppOptions = {
   container: HTMLElement
@@ -52,6 +56,11 @@ export type IslandAppOptions = {
 const MINUTES_PER_SECOND = 8
 const MINUTES_PER_DAY = 1440
 const FLY_MS = 1400
+// 太陽方向每 SUN_STEP_MINUTES 分鐘(遊戲時間;× MINUTES_PER_SECOND 換算約 1.25 秒)才跳一次,陰影圖只在跳的時候重畫。
+// 顏色、亮度與天空上看得到的太陽照常連續變化。調大更省、陰影每次跳動的位移也更明顯(日出日落時太陽低,影子變化最大)。
+const SUN_STEP_MINUTES = 10
+// 旅人、探索中的人物會動,陰影圖在太陽沒跳的期間也每隔這麼久補畫一次(秒),影子才跟得上人
+const SHADOW_REFRESH_S = 0.1
 
 export class IslandApp {
   readonly scene = new THREE.Scene()
@@ -84,6 +93,12 @@ export class IslandApp {
 
   private minutes: number
   private scrubbing = false // 使用者正在拖時間滑桿:暫停自動滾動
+  private readonly cells: CellRuntime
+  private readonly pixelRatios: number[]
+  private governor: GovernorState
+  private readonly shadowCfg: ShadowFrameCfg
+  private sunStep = -1 // 目前太陽方向所在的分段(見 SUN_STEP_MINUTES);-1 = 還沒畫過陰影
+  private shadowAt = -Infinity // 上次重畫陰影圖的時間(clock 秒)
   private selected = -1
   private tourKeys: CameraKey[]
   private stamps: Array<{ minutes: number; arc: number }>
@@ -109,12 +124,17 @@ export class IslandApp {
 
     // ---- renderer / camera ----
     this.renderer = new THREE.WebGLRenderer({ antialias: true })
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, cfg.pixelRatioMax))
+    // 效能調節器的等級 = 像素密度,由低到高,最高是這台裝置與畫質允許的上限;從最高開始,太慢才往下降
+    const prMax = Math.min(window.devicePixelRatio, cfg.pixelRatioMax)
+    this.pixelRatios = [...new Set([1, 1.25, 1.5, 2].filter((r) => r < prMax).concat(prMax))]
+    this.governor = initGovernor(this.pixelRatios.length - 1)
+    this.renderer.setPixelRatio(prMax)
     this.renderer.setSize(w, h)
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
     this.renderer.shadowMap.enabled = cfg.shadowSize > 0
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap
+    this.renderer.shadowMap.autoUpdate = false // 由 frame() 決定何時重畫(見 SUN_STEP_MINUTES)
     Object.assign(this.renderer.domElement.style, { position: 'absolute', inset: '0', touchAction: 'none' })
     o.container.appendChild(this.renderer.domElement)
 
@@ -126,6 +146,7 @@ export class IslandApp {
     this.camera = new THREE.PerspectiveCamera(32, w / h, 1, 2200)
     this.controls = new OrbitControls(this.camera, this.renderer.domElement)
     this.rig = new CameraRig(this.camera, this.controls, this.radius)
+    this.shadowCfg = { mapSize: Math.max(1, cfg.shadowSize), minHalf: 20, maxHalf: this.radius * 1.05, distanceFactor: 0.8 }
     this.rig.setInstant(this.coverNow())
     this.scene.fog = new THREE.Fog('#ffffff', 50, 400)
 
@@ -140,22 +161,27 @@ export class IslandApp {
     if (this.sea) this.scene.add(this.sea.group)
 
     const curve = buildPathCurve(layout.path.points)
-    const pathMesh = buildPathMesh(layout, curve, heightAt, o.controlY)
+    // 散落物:避障貼地後再實例化(先算,步道要知道哪些石階真的有畫出來)
+    const resolved = resolveScatter(layout.scatter, layout, {
+      pathLine: curve.samples.map((s): [number, number] => [s.x, s.z]),
+      pathWidth: layout.path.width,
+      stopClear: STOP_CLEAR,
+      edgeClear: EDGE_CLEAR,
+      radiusOf: (p) => Math.min(MAX_SCATTER_RADIUS, 0.3 * placementScale(o.models[p.model], p.scale)),
+    })
+    // 步道在「自己畫路面的模型」(石階)範圍內沉下去:只算站點與保留下來的擺放,被剔除的不算
+    const pathMesh = buildPathMesh(layout, curve, heightAt, o.controlY, pathCoverTest([...layout.stops, ...resolved.kept], o.models))
     this.scene.add(pathMesh.mesh)
     const pathProfile = buildPathProfile(layout.path.points, curve, heightAt, o.controlY)
     this.orderOf = (x, z) => (curve.length === 0 ? 0 : curve.nearestArc(x, z) / curve.length)
 
-    // 散落物:避障貼地後再實例化
-    const resolved = resolveScatter(layout.scatter, layout, {
-      pathLine: curve.samples.map((s): [number, number] => [s.x, s.z]),
-      pathWidth: layout.path.width,
-      stopClear: 4,
-      edgeClear: 1,
-      radiusOf: (p) => Math.min(1.2, 0.3 * (p.scale ?? 1)),
-    })
     if (o.debug) console.info(`[island] scatter 保留 ${resolved.kept.length}、剔除 ${resolved.dropped.length}`, resolved.dropped.slice(0, 8))
-    const scatter = buildScatter(resolved.kept, o.models, { shadows: cfg.shadowSize > 0 })
+    const scatter = buildScatter(resolved.kept, o.models, { shadows: cfg.shadowSize > 0, grid: layout.grid })
     this.scene.add(scatter.group)
+    // 世界格子:地形與散落物依格子登記,每幀依鏡頭焦點更新串流與 LOD(目前預設全部載入,見 three/world/cellRuntime.ts)
+    this.cells = createCellRuntime(layout.grid ?? DEFAULT_GRID)
+    for (const [cell, objects] of this.terrain.cells) this.cells.add(cell, { objects })
+    for (const [cell, instances] of scatter.cellInstances) this.cells.add(cell, { instances })
 
     this.stops = buildStops(this.stopList, o.models, heightAt, (i) => this.select(i))
     this.scene.add(this.stops.group)
@@ -358,6 +384,7 @@ export class IslandApp {
     this.camera.position.add(d)
   }
   capture(): Promise<Blob | null> {
+    this.renderer.shadowMap.needsUpdate = true // 分享圖用當下的陰影
     const spots = this.stops.views.map((v) => ({ text: `${v.stop.index} ${v.stop.name}`, position: v.label.position }))
     return captureImage(this.renderer, this.scene, this.camera, spots, {
       title: this.o.meta.title,
@@ -387,6 +414,16 @@ export class IslandApp {
     this.camera.updateProjectionMatrix()
   }
 
+  // 效能調節器:持續太慢就降一級像素密度,持續有餘裕再升回來(logic/world/governor.ts)
+  private adaptQuality(dt: number) {
+    const next = stepGovernor(this.governor, dt, { ...DEFAULT_GOVERNOR, levels: this.pixelRatios.length })
+    if (next.level !== this.governor.level) {
+      this.renderer.setPixelRatio(this.pixelRatios[next.level])
+      if (this.o.debug) console.info(`[island] 效能調節:像素密度 → ${this.pixelRatios[next.level]}`)
+    }
+    this.governor = next
+  }
+
   // ===== 每幀 =====
   private frame = () => {
     const dt = Math.min(0.1, this.clock.getDelta())
@@ -399,8 +436,18 @@ export class IslandApp {
 
     const { layout } = this.o
     const light = sampleLight(layout.lighting, this.minutes)
-    const dir = this.lights.update(light, new THREE.Vector3(0, 4, 0))
-    this.skyM.update(light, dir)
+    const sunStep = Math.floor(this.minutes / SUN_STEP_MINUTES)
+    this.lights.update(light, new THREE.Vector3(0, 4, 0), sampleLight(layout.lighting, sunStep * SUN_STEP_MINUTES))
+    if (sunStep !== this.sunStep || t - this.shadowAt >= SHADOW_REFRESH_S) {
+      this.sunStep = sunStep
+      this.shadowAt = t
+      // 陰影範圍跟著鏡頭焦點:近看時範圍小、影子細;拉遠看全島時涵蓋整座島
+      const view = this.camera.position.distanceTo(this.controls.target)
+      this.lights.shadowAround(this.controls.target, quantizeHalf(shadowHalfSize(view, this.shadowCfg), this.shadowCfg))
+      this.renderer.shadowMap.needsUpdate = true
+    }
+    this.cells.update(this.controls.target.x, this.controls.target.z)
+    this.skyM.update(light, sunDirection(light.sunElevationDeg, light.sunAzimuthDeg))
     const dist = this.camera.position.distanceTo(this.controls.target)
     const fog = this.scene.fog as THREE.Fog
     fog.color.set(light.fog)
@@ -433,6 +480,7 @@ export class IslandApp {
     this.controls.update()
     this.renderer.render(this.scene, this.camera)
     this.labels.render(this.scene, this.camera)
+    this.adaptQuality(dt)
 
     if (this.debugEl) {
       this.frames++

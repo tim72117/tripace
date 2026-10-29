@@ -21,14 +21,14 @@ const at = { model: 'm', x: 0, y: 0, z: 0 }
 
 describe('placementPolys', () => {
   it('宣告式版本有內容時,碰撞用它(不用 GLB 合併後的大包圍盒)', () => {
-    const polys = placementPolys({ parts: declarative, glb: { scene: bigGlb(), unit: 1 } }, at)
+    const polys = placementPolys({ parts: declarative, glb: { scene: bigGlb() } }, at)
     expect(polys).toHaveLength(1)
     const b = bounds(polys)
     expect(b.maxX - b.minX).toBeCloseTo(2, 3)
     expect(b.maxZ - b.minZ).toBeCloseTo(2, 3)
   })
   it('宣告式沒有內容時才退回 GLB', () => {
-    const polys = placementPolys({ parts: [], glb: { scene: bigGlb(), unit: 1 } }, at)
+    const polys = placementPolys({ parts: [], glb: { scene: bigGlb() } }, at)
     expect(polys).toHaveLength(1)
     const b = bounds(polys)
     expect(b.maxX - b.minX).toBeCloseTo(10, 3)

@@ -7,7 +7,7 @@ import type { Model3D, Part, Vec3 } from '../../../three/model';
 //   - 前側（+Z，靠鏡頭）刻意只放矮的小吃攤（魚丸、芋圓、臭豆腐），不擋住看向店屋與燈籠的視線。
 //   - 街道正上方懸一排紅燈籠（細繩在這個尺度看不見，省略），各燈籠不同相位 sway；一處湯鍋冒蒸氣。
 // 傍晚 lanternGlow 還低時，店面暖光先亮、燈籠後亮，正好是文章「人潮散去、燈籠漸亮」的時刻。
-// 尺寸：長 1（X）、深約 0.36（Z）、高約 0.24。建議 scale 16（約 16 格長、3.8 格高），rotY 讓街沿步道方向。
+// 尺寸：長 1（X）、深約 0.36（Z）、高約 0.24。unit 25 → 真實尺寸約 25 m 長、6 m 高,rotY 讓街沿步道方向。
 
 function gable(depth: number, length: number, height: number, pos: Vec3): Part {
   const r = depth / 1.732;
@@ -65,6 +65,7 @@ const lanterns: Part[] = LANTERN_XS.map((x, i) => ({
 }));
 
 const model: Model3D = {
+  unit: 25, // 真實尺寸(1 格 = 1 m):街段約 25 m 長
   palette: {
     paving: '#8d8a82',
     wall: '#efe2c8',

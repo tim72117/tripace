@@ -1,7 +1,7 @@
 // travelers.ts——親子兩人沿步道走(原型:沿曲線按時間表走,沒有尋路與互動)。
 import * as THREE from 'three'
 import type { PathCurve } from '../logic/pathCurve'
-import { animateModel, buildModel, type BuiltModel, type Model3D } from './model'
+import { animateModel, buildModel, placementScale, type BuiltModel, type Model3D } from './model'
 
 type Walker = { built: BuiltModel; scale: number; phase: number; weight: number; lastArc: number; lateral: number; behind: number }
 
@@ -17,14 +17,15 @@ export function buildTravelers(
   heightAtArc: (s: number) => number,
 ): Travelers {
   const group = new THREE.Group()
-  const mk = (m: Model3D, scale: number, lateral: number, behind: number): Walker => {
+  const mk = (m: Model3D, lateral: number, behind: number): Walker => {
     const built = buildModel(m)
+    const scale = placementScale(m, 1) // 人物的真實身高由模型的 unit 決定
     built.root.scale.setScalar(scale)
     built.root.traverse((o) => { const me = o as THREE.Mesh; if (me.isMesh) me.castShadow = true })
     group.add(built.root)
     return { built, scale, phase: 0, weight: 0, lastArc: 0, lateral, behind }
   }
-  const walkers = [mk(parent, 1.7, -0.45, 0), mk(child, 1.7, 0.5, 0.9)]
+  const walkers = [mk(parent, -0.45, 0), mk(child, 0.5, 0.9)]
   let first = true
 
   return {

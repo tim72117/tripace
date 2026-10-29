@@ -88,8 +88,8 @@ export function buildLanterns(
   // 固定數量的 PointLight(只改 intensity,不增減)
   const lights: THREE.PointLight[] = []
   for (let i = 0; i < Math.min(opts.pointLights, stopLights.length); i++) {
-    const l = new THREE.PointLight('#ffb35c', 0, 30, 1.5)
-    l.position.set(stopLights[i].x, stopLights[i].y + 4, stopLights[i].z)
+    const l = new THREE.PointLight('#ffb35c', 0, 47, 1.5)
+    l.position.set(stopLights[i].x, stopLights[i].y + 6.25, stopLights[i].z)
     group.add(l)
     lights.push(l)
   }
@@ -118,7 +118,8 @@ export function buildLanterns(
       pg.attributes.color.needsUpdate = true
       // 每盞 PointLight 的強度 = 該站附近燈籠的平均亮度
       const lightScale = opts?.lightScale ?? 1
-      lights.forEach((l) => { l.intensity = this.glowAtPoint(l.position.x, l.position.z, 14) * 26 * lightScale })
+      // 半徑與強度是 1 格 = 1 m 換算後的值(換算前 14 格、26):點光源衰減 decay 1.5,距離放大 1.5625 倍時強度要乘 1.5625^1.5 才一樣亮
+      lights.forEach((l) => { l.intensity = this.glowAtPoint(l.position.x, l.position.z, 21.875) * 50.8 * lightScale })
     },
     glowAtPoint(x, z, radius) {
       let sum = 0, n = 0

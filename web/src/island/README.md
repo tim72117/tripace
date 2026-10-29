@@ -34,9 +34,13 @@ npx tsc -b
 - `logic/`:純邏輯與測試,`integration.test.ts` 用真實版面+文章+全部模型做整合驗證。
 - `three/`:渲染層(島體、步道、天空、海面、站點、散落物實例化、燈籠、旅人、粒子、鏡頭、截圖)。`model.ts` 是宣告式模型格式(複本自 imagine 專案)。
 - `models/`:跨場景共用的低多邊形模型(裝飾、親子旅人);**按需載入**,場景只載入版面實際用到的(`scenes/modelIds.ts`)。
-- **高細節 GLB 模型(選用)**:宣告式模型之外,一個模型 id 可以另外有 Blender 腳本產出的 GLB(目前只有夜遊九份的阿妹茶樓,
+- **尺寸一律是真實尺寸(1 格 = 1 m)**:每個模型用 `Model3D.unit`(parts 的 1 單位 = 幾公尺)宣告自己的大小,版面的 `scale` 預設 1、
+  只做小幅變化;擺放時根節點的縮放 = `unit × scale`(`three/model.ts` 的 `placementScale`,散落物、站點、碰撞、旅人共用)。
+  2026-10 之前各模型是任意尺度、靠版面 scale 決定大小(建築約 0.64 格/m、人物 1 格/m,比例不一致),當時整張九份版面以 × 1.5625
+  精確換算成公尺,擺放結果不變。人物、貓、攤位保留真實大小,沒有跟著放大。
+- **高細節 GLB 模型(選用)**:宣告式模型之外,一個模型 id 可以另外有 Blender 腳本產出的 GLB(目前是夜遊九份的阿妹茶樓與石階磚,
   腳本在 `web/tools/blender/amei_teahouse.py`,資產在 `scenes/night-jiufen/assets/`)。場景在 `data.ts` 的 `glbModels` 登記
-  `{ url, unit }`(unit 把公尺縮成宣告式版的尺度,所以版面的 scale 不用改);`scenes/registry.ts` 的 `load`(完整版)載入後掛到
+  `{ url }`(GLB 一律以公尺建模、放進場景不換算;同 id 宣告式後備版的 `unit` 要對齊同一個真實尺寸);`scenes/registry.ts` 的 `load`(完整版)載入後掛到
   同 id 模型的 `glb` 欄位,`buildModel` 有 `glb` 就畫它。**載入失敗不會壞**:沿用宣告式版當後備。首頁縮小版用 `loadBase`,
   不載入 GLB。GLB 的發光強度載入時除以 `EMISSIVE_DIVISOR`(`three/glbLoader.ts`),才能配合 `stops.ts` 的日夜連動基準。
   建模流程與即時預覽見 `web/tools/blender/` 與 `web/tools/model-preview/`。
@@ -44,8 +48,11 @@ npx tsc -b
   - **每個網格只能有一個材質**:`prepareGlbScene` 遇到多材質網格直接丟錯(`stops.ts` 的日夜發光、`bake.ts`、`colliders.ts` 都假設單一材質);`prepareGlbScene` 冪等。GLB 的幾何與材質標記 `userData.sharedResource`,場景卸載時 `disposeObject` 跳過(由 registry 快取擁有,不用每次進出重傳 GPU)。
   - **燈籠是錨點**:GLB 裡的 `lantern_*` 空節點只標位置,`three/stopLanterns.ts` 讀出來用兩個 InstancedMesh 畫燈籠(燈身發光材質由 `stops.ts` 收進 `glowMats`,隨站點亮度日夜連動);沒有 GLB(退回宣告式版)時就沒有這批燈籠。
   - **碰撞用宣告式版**:GLB 每個材質合併成一個網格,逐網格取包圍盒會變成整棟大小的隱形牆,所以 `colliders.ts` 有宣告式 `parts` 時一律用它,宣告式沒有內容才退回 GLB。
-- `scenes/`:場景。`registry.ts` 註冊表(網址、載入、快取、預載)、`types.ts` 契約、`night-jiufen/`(`index.ts` 輕量描述、`data.ts` 版面與文章與載入器、`layout.ts`、`article.json`、`models/` 專屬站點模型)、`sample-islet/`(實驗場景,feature flag)、`useIslandScene.ts`(載入狀態與防競態)。
-- `data/`:`layoutTypes.ts` 是版面資料契約(各場景的 `layout.ts` 依它填資料)。
+- `scenes/`:場景。`registry.ts` 註冊表(網址、載入、快取、預載)、`types.ts` 契約、`night-jiufen/`(`index.ts` 輕量描述、`data.ts` 版面與文章與載入器、`world/` 場景資料檔(JSON,依用途分層、擺放一格一檔)、`rules.ts` 程序化擺放規則、`article.json`、`models/` 專屬站點模型)、`sample-islet/`(實驗場景,feature flag)、`useIslandScene.ts`(載入狀態與防競態)。
+- `data/`:`layoutTypes.ts` 是引擎用的版面資料契約;九份的版面由 `world/` 的資料檔組成(`logic/world/sceneFormat.ts`)。
+- **大型場景框架**(`logic/world/` 純邏輯、`three/world/` 渲染端):世界格子規格 `grid.ts`、場景檔案格式 `sceneFormat.ts`、
+  烘焙 `npm run island:bake -- <sceneId>`(`tools/bakeWorld.ts`)、串流與 LOD 狀態 `streaming.ts` + 格子管理器 `cellRuntime.ts`、
+  陰影跟著鏡頭 `shadowFrame.ts`、效能調節器 `governor.ts`。目前是最小框架,待辦細節見 handbook「研究」分類的〈大型場景框架:待辦〉。
 - `mini/`:縮小版(`MiniIsland.ts`、`groundPools.ts`、`loadMini.ts`)。
 - `ui/`:完整版 HUD、資訊卡、樣式(`hud.css` 全部限定在 `.island-root` 內,不影響其他頁面)。
 - `islandData.ts`:場景資料(模型、版面、文章)→ 站點的組裝(`loadIslandData(sceneId)`);完整版與縮小版共用 registry 的載入與快取。
@@ -56,7 +63,7 @@ npx tsc -b
 操作:桌面 WASD/方向鍵或點地面,觸控裝置虛擬搖桿或點地面;Esc、封面、點站都會離開探索。
 - `logic/walk.ts`:移動規則(純函式)——先試完整位移、再沿牆滑、高度差超過 `maxStep`(0.7)就擋(同時擋住陡坡與斷崖;石階旁的地面被切得比踏面低,所以只能走在石階上)。
 - `logic/walkWorld.ts`:世界(在島內且離島緣 0.8、腳底高度、碰撞)。站在步道路面範圍內取步道剖面高度(`logic/pathProfile.ts`,與 pathMesh 畫路面共用),其他取地面。
-- `three/colliders.ts`:由擺設模型的部件算固體——人身高度帶(0.35~1.8 格)內、不發光、夠厚的部件取包圍盒投影成凸多邊形;路面/地板/階梯部件、石階模型、燈籠、貓等不擋。
+- `three/colliders.ts`:由擺設模型的部件算固體——人身高度帶(0.35~1.8 m)內、不發光、夠厚的部件取包圍盒投影成凸多邊形;路面/地板/階梯部件、石階模型、燈籠、貓等不擋。
 - `three/explorer.ts`:人物、小孩跟隨、走路動畫;固體索引第一次進入探索才建。
 - 測試:`logic/walkWorld.test.ts` 用真實九份資料驗證能沿整條步道走完、茶樓與戲院擋得住、不能離開石階。
 - 已知限制:點地面是直線走過去(沒有尋路),被擋就放棄;站點的資訊卡在探索中不會因為走近而觸發。

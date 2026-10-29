@@ -1,0 +1,22 @@
+{
+  "format": 1,
+  "cell": "0_1",
+  "placements": [
+    {"model":"deco-lantern-red","x":0.78,"z":35.2,"y":0.71,"rotY":0,"scale":0.93,"seed":331819,"layer":"row-lights","source":"rule"},
+    {"model":"deco-lantern-red","x":4.69,"z":35.26,"y":0.69,"rotY":0,"scale":1,"seed":766163,"layer":"row-lights","source":"rule"},
+    {"model":"deco-lantern-red","x":15.64,"z":34.17,"y":1.2,"rotY":0,"scale":0.87,"seed":611408,"layer":"row-lights","source":"rule"},
+    {"model":"deco-lantern-red","x":19.57,"z":34.05,"y":1.21,"rotY":0,"scale":1,"seed":478847,"layer":"row-lights","source":"rule"},
+    {"model":"deco-lantern-red","x":23.5,"z":33.94,"y":1.22,"rotY":0,"scale":0.95,"seed":273703,"layer":"row-lights","source":"rule"},
+    {"model":"deco-lantern-red","x":27.43,"z":33.82,"y":1.23,"rotY":0,"scale":1.06,"seed":671879,"layer":"row-lights","source":"rule"},
+    {"model":"deco-lantern-red","x":31.36,"z":33.71,"y":1.24,"rotY":0,"scale":0.88,"seed":359828,"layer":"row-lights","source":"rule"},
+    {"model":"deco-tree-banyan","x":15.41,"z":44.72,"y":-0.97,"rotY":5.48,"scale":1.09,"seed":703828,"layer":"banyans","source":"rule"},
+    {"model":"deco-tree-banyan","x":0.88,"z":45.56,"y":-2.24,"rotY":0.91,"scale":0.93,"seed":784985,"layer":"banyans","source":"rule"},
+    {"model":"deco-tree-banyan","x":31.99,"z":39.09,"y":0,"rotY":1.26,"scale":0.92,"seed":594440,"layer":"banyans","source":"rule"},
+    {"model":"deco-bush","x":6.95,"z":49.44,"y":-3.91,"rotY":1.1,"scale":1.09,"seed":390487,"layer":"ground-cover","source":"rule"},
+    {"model":"deco-rock","x":17.97,"z":33.5,"y":1.25,"rotY":3.65,"scale":0.92,"seed":307159,"layer":"ground-cover","source":"rule"},
+    {"model":"deco-bush","x":17.47,"z":49.93,"y":-3.26,"rotY":2.9,"scale":1.16,"seed":416500,"layer":"ground-cover","source":"rule"},
+    {"model":"deco-bush","x":12.84,"z":34.61,"y":0.62,"rotY":3.04,"scale":0.94,"seed":296964,"layer":"ground-cover","source":"rule"},
+    {"model":"deco-rock","x":3.19,"z":50,"y":-3.91,"rotY":6.13,"scale":1.2,"seed":807980,"layer":"ground-cover","source":"rule"},
+    {"model":"deco-bush","x":24.62,"z":36.61,"y":-0.03,"rotY":4.35,"scale":0.85,"seed":703663,"layer":"ground-cover","source":"rule"}
+  ]
+}

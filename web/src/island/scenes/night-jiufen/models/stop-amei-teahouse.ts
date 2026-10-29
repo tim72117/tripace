@@ -7,7 +7,7 @@ import type { Model3D, Part } from '../../../three/model';
 //   - 二樓前方是欄杆平台（文章「靠欄杆的位置」），放一張茶桌與小茶壺；平台朝 +Z，
 //     島的版面讓 +Z 朝向坡下的山城與遠方海面。
 //   - 窗帶全是 emissive 暖黃，紅布招牌 emissive，右側立柱再懸一盞大燈籠（sway）。
-// 尺寸：寬約 1、深約 0.72、高約 1.0。建議 scale 7（約 7 格寬、7 格高），放在最高層階地。
+// 尺寸：寬約 1、深約 0.72、高約 1.0。unit 11 → 真實尺寸約 11 m 寬、11 m 高(對齊 GLB),放在最高層階地。
 
 // 四角錐台屋簷：cylinder 4 段轉 45 度成正方形，外層群組再壓扁 Z 成長方形
 function eave(name: string, y: number, z: number, rBottom: number, rTop: number, h: number, depthScale: number): Part {
@@ -33,6 +33,7 @@ function lanternRow(prefix: string, xs: number[], y: number, z: number, r: numbe
 }
 
 const model: Model3D = {
+  unit: 11, // 真實尺寸(1 格 = 1 m):1 單位 = 11 m,對齊 GLB 主體寬度(GLB 本身是公尺)
   palette: {
     stone: '#8d8a82',
     wood: '#6e3523',

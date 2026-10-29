@@ -22,8 +22,8 @@ export function detectQuality(search: string, env: { width: number; coarsePointe
 
 export function configFor(q: Quality): QualityCfg {
   switch (q) {
-    case 'high': return { pixelRatioMax: 2, shadowSize: 2048, stars: 600, particleScale: 1, pointLights: 4, glowSize: 3.4 }
-    case 'mid': return { pixelRatioMax: 1.5, shadowSize: 1024, stars: 300, particleScale: 0.6, pointLights: 4, glowSize: 3.2 }
-    case 'low': return { pixelRatioMax: 1, shadowSize: 0, stars: 120, particleScale: 0.3, pointLights: 2, glowSize: 3 }
+    case 'high': return { pixelRatioMax: 2, shadowSize: 2048, stars: 600, particleScale: 1, pointLights: 4, glowSize: 5.3 }
+    case 'mid': return { pixelRatioMax: 1.5, shadowSize: 1024, stars: 300, particleScale: 0.6, pointLights: 4, glowSize: 5 }
+    case 'low': return { pixelRatioMax: 1, shadowSize: 0, stars: 120, particleScale: 0.3, pointLights: 2, glowSize: 4.7 }
   }
 }

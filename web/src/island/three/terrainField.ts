@@ -11,10 +11,13 @@ import { sampledHeight, surfaceMetrics, surfaceWeights } from '../logic/terrainS
 import { pointInPolygon } from '../logic/geometry'
 import { mulberry32 } from '../logic/rng'
 
-const DEFAULT_CELL = 2
+const DEFAULT_CELL = 3.13
 const DEFAULT_SOIL = ['#7a5a3e', '#6a4d36', '#5a4331', '#4a382a']
 const DEFAULT_ROCK = '#8a7f6f'
 const SHADE_SEED = 31 // 著色用雜訊的種子(只影響顏色,不影響形狀)
+// 著色的長度基準(公尺):雜訊斑塊大小、沙灘過渡寬、地層條紋間距、曲率門檻都以這個長度為 1 調出來
+// (世界單位改成 1 格 = 1 m 之前的 1 格 ≈ 1.56 m),乘上它外觀才和調整時一致。
+const SHADE_LEN = 1.5625
 
 export type FieldTerrainGeometry = { top: THREE.BufferGeometry; wall: THREE.BufferGeometry }
 
@@ -90,7 +93,7 @@ export function fieldTerrainGeometry(layout: IslandLayout, heightAt: (x: number,
   const grassHigh = new THREE.Color(palette.grassAlt)
   const rock = new THREE.Color(t.colors?.rock ?? DEFAULT_ROCK)
   const beach = new THREE.Color(t.colors?.beach ?? palette.dirt)
-  const beachY = t.colors?.beachY ?? topY + 0.5
+  const beachY = t.colors?.beachY ?? topY + 0.78
   const soil = (t.colors?.soil ?? DEFAULT_SOIL).map((c) => new THREE.Color(c))
   const padColors = (t.pads ?? []).map((p) => (p.color ? new THREE.Color(p.color) : null))
   const dirtC = new THREE.Color(palette.dirt)
@@ -127,18 +130,19 @@ export function fieldTerrainGeometry(layout: IslandLayout, heightAt: (x: number,
     if (padIdx >= 0) color.copy(padColors[padIdx]!)
     else {
       // 坡度與曲率取自高度場(不是三角形法線),著色與網格疏密無關
-      const w = surfaceWeights(surfaceMetrics(shadeH, cx, cz, eps), fbmAt(cx, cz, SHADE_SEED, 7, 2))
+      const sm = surfaceMetrics(shadeH, cx, cz, eps)
+      const w = surfaceWeights({ grade: sm.grade, concavity: sm.concavity * SHADE_LEN }, fbmAt(cx, cz, SHADE_SEED, 7 * SHADE_LEN, 2))
       ao = w.ao
       // 草:隨高度漸變,再用低頻雜訊疊出深淺斑塊
-      const patch = fbmAt(cx, cz, SHADE_SEED + 11, 9, 3)
+      const patch = fbmAt(cx, cz, SHADE_SEED + 11, 9 * SHADE_LEN, 3)
       color.copy(grass).lerp(grassHigh, Math.min(1, Math.max(0, (hMid - topY) / Math.max(1, peak - topY))))
       color.lerp(patch > 0 ? grassHigh : grassDark, Math.abs(patch) * 0.55)
       color.lerp(dryC, w.dry).lerp(dirtC, w.dirt)
       // 低處沙灘:邊界隨雜訊彎曲,不呈一條等高線
-      const shore = THREE.MathUtils.smoothstep(beachY + fbmAt(cx, cz, SHADE_SEED + 23, 5, 2) * 0.45 - hMid, 0, 0.35)
+      const shore = THREE.MathUtils.smoothstep(beachY + fbmAt(cx, cz, SHADE_SEED + 23, 5 * SHADE_LEN, 2) * 0.45 * SHADE_LEN - hMid, 0, 0.35 * SHADE_LEN)
       color.lerp(beach, shore)
       // 岩石:依高度分層(地層)的明暗條紋
-      const strata = 1 + 0.07 * Math.sin(hMid * 2.6 + fbmAt(cx, cz, SHADE_SEED + 37, 4, 2) * 2)
+      const strata = 1 + 0.07 * Math.sin((hMid / SHADE_LEN) * 2.6 + fbmAt(cx, cz, SHADE_SEED + 37, 4 * SHADE_LEN, 2) * 2)
       color.lerp(rock.clone().multiplyScalar(strata), w.rock * (1 - shore))
     }
     color.multiplyScalar(ao * (0.92 + hashRnd(a[0] + b[0] + c[0], a[2] + b[2] + c[2], 4) * 0.16))
@@ -157,7 +161,7 @@ export function fieldTerrainGeometry(layout: IslandLayout, heightAt: (x: number,
   const wpos: number[] = []
   const wcol: number[] = []
   const maxTop = Math.max(...ring.map(([x, z]) => heightAt(x, z)))
-  const rows = Math.max(1, Math.ceil((maxTop - floorY) / 1.4)) // 列數全輪廓共用,相鄰段共用的點高度才一致
+  const rows = Math.max(1, Math.ceil((maxTop - floorY) / (1.4 * SHADE_LEN))) // 列數全輪廓共用,相鄰段共用的點高度才一致
   for (let i = 0; i < ring.length; i++) {
     const [x1, z1] = ring[i]
     const [x2, z2] = ring[(i + 1) % ring.length]

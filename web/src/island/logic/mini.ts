@@ -68,6 +68,6 @@ export function miniGlow(theme: MiniTheme): GlowSettings {
 
 // poolRadius——地面光斑半徑(格):跟著擺放的縮放走(街屋、茶樓、石階這些大模型的光斑大,單盞燈籠的小),
 // 夾在 [POOL_RADIUS_MIN, POOL_RADIUS_MAX]:太小看不見、太大會蓋過整條街。
-export const POOL_RADIUS_MIN = 2.5
-export const POOL_RADIUS_MAX = 10
+export const POOL_RADIUS_MIN = 3.9
+export const POOL_RADIUS_MAX = 15.6
 export const poolRadius = (scale: number): number => Math.max(POOL_RADIUS_MIN, Math.min(POOL_RADIUS_MAX, 2.2 * scale))

@@ -1,7 +1,7 @@
 // 真實資料的整合驗證:Fable 的版面 + 部落客文章 + 全部模型檔(不 import three,純資料與純邏輯)。
 import { describe, expect, it } from 'vitest'
 import article from '../scenes/night-jiufen/article.json'
-import { ISLAND_LAYOUT, PATH_POINT_Y, groundY } from '../scenes/night-jiufen/layout'
+import { ISLAND_LAYOUT, PATH_POINT_Y, groundY } from '../scenes/night-jiufen/world'
 import { articleToIsland, type ArticleSource } from './articleToIsland'
 import { buildPathCurve } from './pathCurve'
 import { lanternOrder } from './lanternSchedule'

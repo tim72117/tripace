@@ -25,7 +25,10 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/tim72117/tripace/internal/clipage"
 )
 
 // runLogin 是 `login` 子命令的入口,支援兩種登入方式:
@@ -224,38 +227,32 @@ type loginCallbackResult struct {
 // 換出實際的 token——明文 token 全程只經過這個本機 process(從 server 回應
 // 本文直接讀出),從未出現在瀏覽器網址或畫面上。
 //
-// result 是 buffer size 1 的 channel,故只有第一次請求真正有意義:之後任何
-// 重複的請求(例如瀏覽器重新整理該分頁)都只會拿到同一頁「可以關閉分頁」的
-// 提示,不會再嘗試往 channel 送第二次、也不會 panic。
+// 只有第一次請求真正換 token(sync.Once):同時進來的重複請求(瀏覽器預抓、重新整理)
+// 會等第一次做完,拿到同一個結果;result 是 buffer size 1 的 channel,只會被送一次。
+// 頁面在換完 token 之後才寫,所以瀏覽器顯示的是真正的結果,不會在換失敗時說成功。
 func loginCallbackHandler(client *cliAuthClient, result chan<- loginCallbackResult) http.HandlerFunc {
-	var done bool
+	var once sync.Once
+	var ok bool
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/callback" {
 			http.NotFound(w, r)
 			return
 		}
-
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		fmt.Fprint(w, `<!doctype html><html><body style="font-family:sans-serif;padding:2rem">
-<p>可以關閉這個分頁,回到終端機繼續。</p></body></html>`)
-
-		if done {
-			return
-		}
-		done = true
-
-		code := r.URL.Query().Get("code")
-		if code == "" {
-			result <- loginCallbackResult{err: fmt.Errorf("callback 未帶 code(登入是否被取消了?)")}
-			return
-		}
-
-		token, err := client.exchange(code)
-		if err != nil {
-			result <- loginCallbackResult{err: fmt.Errorf("換取 token 失敗: %w", err)}
-			return
-		}
-		result <- loginCallbackResult{token: token}
+		once.Do(func() {
+			code := r.URL.Query().Get("code")
+			if code == "" {
+				result <- loginCallbackResult{err: fmt.Errorf("callback 未帶 code(登入是否被取消了?)")}
+				return
+			}
+			token, err := client.exchange(code)
+			if err != nil {
+				result <- loginCallbackResult{err: fmt.Errorf("換取 token 失敗: %w", err)}
+				return
+			}
+			ok = true
+			result <- loginCallbackResult{token: token}
+		})
+		clipage.WriteLoginDone(w, "tripace-cli", ok)
 	}
 }
 

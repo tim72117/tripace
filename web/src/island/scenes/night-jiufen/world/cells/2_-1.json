@@ -1,0 +1,7 @@
+{
+  "format": 1,
+  "cell": "2_-1",
+  "placements": [
+    {"model":"deco-tree-pine","x":66.09,"z":-22.78,"y":26.9,"rotY":6.16,"scale":0.86,"seed":524612,"layer":"pines","source":"rule"}
+  ]
+}

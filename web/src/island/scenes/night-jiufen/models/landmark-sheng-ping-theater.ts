@@ -13,7 +13,7 @@ import type { Model3D, Part } from '../../../three/model';
 // 設計意圖：在豎崎路底、輕便路口旁圍出一個開闊廣場，正面朝 +Z(廣場、海與封面鏡頭)。整體比阿妹茶樓矮、
 //   比一般老屋高大且方正，夜裡靠「發光招牌 + 大門暖光 + 兩盞燈籠」被認出來，不和茶樓搶視覺頂點。
 // 尺寸：寬約 1.0(X，含壁柱)、深約 0.82(Z，-0.40 ~ +0.42)、高約 0.80(山牆拱頂)。
-// 建議 scale 7 → 約 7 格寬、5.7 格深、5.6 格高。原點在腳底中心，正面朝 +Z。
+// 真實尺寸(unit 10.94)約 11 m 寬、9 m 深、8.9 m 高。原點在腳底中心，正面朝 +Z。
 
 const WALL_H = 0.42; // 觀眾廳牆高
 const HALL_W = 0.8;
@@ -50,6 +50,7 @@ function lantern(name: string, x: number, phase: number): Part {
 }
 
 const model: Model3D = {
+  unit: 10.9375, // 真實尺寸(1 格 = 1 m):戲院約 11 m 寬、8.9 m 高
   palette: {
     stone: '#8a877f',
     plaster: '#d8ccb2', // 洗石子/灰泥立面

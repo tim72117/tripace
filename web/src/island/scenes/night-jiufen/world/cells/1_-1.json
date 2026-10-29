@@ -1,0 +1,16 @@
+{
+  "format": 1,
+  "cell": "1_-1",
+  "placements": [
+    {"model":"deco-lantern-red","x":35.89,"z":-10.22,"y":14.06,"rotY":0,"scale":0.9,"seed":813427,"layer":"row-lights","source":"rule"},
+    {"model":"deco-tree-pine","x":48.01,"z":-28.99,"y":43.59,"rotY":4.17,"scale":1.02,"seed":733482,"layer":"pines","source":"rule"},
+    {"model":"deco-tree-pine","x":52.12,"z":-30.64,"y":38.01,"rotY":6.27,"scale":1.04,"seed":299061,"layer":"pines","source":"rule"},
+    {"model":"deco-tree-pine","x":51.8,"z":-26.38,"y":36.01,"rotY":3.09,"scale":0.96,"seed":222034,"layer":"pines","source":"rule"},
+    {"model":"deco-tree-pine","x":53.13,"z":-20.58,"y":28.42,"rotY":6.17,"scale":0.91,"seed":37289,"layer":"pines","source":"rule"},
+    {"model":"deco-tree-pine","x":56.42,"z":-29.76,"y":32.25,"rotY":1.49,"scale":1.04,"seed":854425,"layer":"pines","source":"rule"},
+    {"model":"deco-tree-pine","x":58.75,"z":-20.52,"y":28.04,"rotY":1.04,"scale":1.03,"seed":161674,"layer":"pines","source":"rule"},
+    {"model":"deco-bush","x":34,"z":-13.07,"y":15.5,"rotY":3.12,"scale":0.94,"seed":330202,"layer":"ground-cover","source":"rule"},
+    {"model":"deco-cliff-rock","x":57.04,"z":-14.21,"y":19.41,"rotY":1.74,"scale":1.01,"tilt":[0.97,0.17],"seed":366639,"layer":"cliff-rocks","source":"rule"},
+    {"model":"deco-cliff-rock","x":45.65,"z":-15.05,"y":17.59,"rotY":5.29,"scale":1.08,"tilt":[0.82,0.36],"seed":374423,"layer":"cliff-rocks","source":"rule"}
+  ]
+}

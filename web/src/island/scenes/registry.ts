@@ -80,7 +80,7 @@ export function createSceneRegistry(
         await Promise.all(
           sources.map(async ([mid, src]) => {
             try {
-              models[mid] = { ...models[mid], glb: { scene: await withTimeout(loadGlb(src.url), glbTimeoutMs, `高細節模型 ${mid}`), unit: src.unit } }
+              models[mid] = { ...models[mid], glb: { scene: await withTimeout(loadGlb(src.url), glbTimeoutMs, `高細節模型 ${mid}`) } }
             } catch (e) {
               anyFailed = true
               console.warn(`[island] 高細節模型 ${mid} 載入失敗,改用簡化版:`, e)

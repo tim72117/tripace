@@ -28,7 +28,7 @@ function glitterTexture(): THREE.CanvasTexture {
 export function buildSea(seaY: number, color: string): Sea {
   const group = new THREE.Group()
   const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.32, metalness: 0.05, flatShading: true })
-  const plane = new THREE.Mesh(new THREE.PlaneGeometry(900, 900), mat)
+  const plane = new THREE.Mesh(new THREE.PlaneGeometry(1400, 1400), mat)
   plane.rotation.x = -Math.PI / 2
   plane.position.y = seaY
   plane.receiveShadow = true
@@ -38,7 +38,7 @@ export function buildSea(seaY: number, color: string): Sea {
   const gm = new THREE.MeshBasicMaterial({
     map: glitterTexture(), transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, color: '#ffd9a0', fog: false,
   })
-  const strip = new THREE.Mesh(new THREE.PlaneGeometry(26, 120), gm)
+  const strip = new THREE.Mesh(new THREE.PlaneGeometry(40, 188), gm)
   strip.rotation.x = -Math.PI / 2
   strip.position.y = seaY + 0.05
   group.add(strip)

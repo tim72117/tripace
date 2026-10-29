@@ -216,7 +216,8 @@ def export_glb(path):
 def render_views(out_prefix, views, size=(640, 480), center=(0, 5, 0), dist=26):
     """views: [(名稱, 方位角度, 仰角度)];方位 0 = 從正面(+z)看,正角度往右(+x)轉。以 EEVEE 渲染,給人或 AI 看形狀用。"""
     sc = bpy.context.scene
-    sc.render.engine = 'BLENDER_EEVEE'
+    engines = [e.identifier for e in sc.render.bl_rna.properties['engine'].enum_items]
+    sc.render.engine = 'BLENDER_EEVEE' if 'BLENDER_EEVEE' in engines else 'BLENDER_EEVEE_NEXT'  # Blender 4.2+ 改名
     sc.render.resolution_x, sc.render.resolution_y = size
     sc.render.image_settings.file_format = 'PNG'
     world = bpy.data.worlds.new('w')

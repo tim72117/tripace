@@ -53,12 +53,17 @@ export type Part = {
 };
 
 // glb:外部建模(Blender 腳本)產出的高細節版本,載入後掛在這裡;有 glb 時畫面用它,parts 只是載入失敗或
-// 還沒載入時的後備(宣告式的簡化版)。unit = 把 glb 的單位(公尺)縮成這個模型的單位(parts 的尺寸慣例),
-// 這樣版面裡的 scale 不用跟著改。見 three/glbLoader.ts 與 scenes/registry.ts。
-export type GlbAttachment = { scene: THREE.Object3D; unit: number };
+// 還沒載入時的後備(宣告式的簡化版)。GLB 一律以公尺建模(1 m = 1 格),見 three/glbLoader.ts 與 scenes/registry.ts。
+export type GlbAttachment = { scene: THREE.Object3D };
 
 export type Model3D = {
   glb?: GlbAttachment;
+  // unit——parts 的 1 單位 = 幾公尺(= 幾格,世界單位 1 格 = 1 m),預設 1。模型的真實尺寸 = parts × unit,
+  // 由模型自己決定;版面 Placement.scale 只做小幅變化(預設 1)。擺放時的縮放 = unit × scale(見 placementScale)。
+  unit?: number;
+  // coversPath——這個模型自己畫路面(例如石階):步道帶子經過它的範圍(模型座標 |x| ≤ halfWidth、|z| ≤ halfLength)時
+  // 沉進模型裡,不再疊一層斜坡穿出踏面。見 three/pathMesh.ts 的 pathCoverTest。
+  coversPath?: { halfWidth: number; halfLength: number };
   palette?: Record<string, string>;
   // 步長（單位同上）：每走這麼遠完成一次步行週期，預設 0.6
   stride?: number;
@@ -141,6 +146,12 @@ function material(color: string, emissive?: string, o: MaterialOpts = {}): THREE
   return m;
 }
 
+// placementScale——擺放時套在根節點的等比縮放:模型的 unit(真實尺寸)× 版面的 scale(小幅變化)。
+// 散落物、站點、碰撞、旅人都用這個,模型的大小才只有一個來源。
+export function placementScale(model: Model3D | undefined, scale: number | undefined): number {
+  return (model?.unit ?? 1) * (scale ?? 1);
+}
+
 export function buildModel(model: Model3D): BuiltModel {
   const animated: Animated[] = [];
   const resolve = (c: string | undefined) =>
@@ -164,7 +175,8 @@ export function buildModel(model: Model3D): BuiltModel {
   if (model.glb) {
     // 高細節版:複製一份場景(幾何與材質共用,不重複佔記憶體);靜態,沒有程序動畫
     const g = model.glb.scene.clone(true);
-    g.scale.setScalar(model.glb.unit);
+    // GLB 是公尺;根節點擺放時會乘上 unit,這裡先除回來,畫出來才是 GLB 的真實尺寸
+    g.scale.setScalar(1 / (model.unit ?? 1));
     root.add(g);
     return { root, animated, stride: model.stride ?? 0.6 };
   }

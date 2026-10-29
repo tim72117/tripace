@@ -9,7 +9,8 @@ export type Poly = Pt[]
 
 export type WalkWorld = {
   inside(x: number, z: number): boolean // 在島內(含離邊緣的安全距離)
-  surfaceY(x: number, z: number): number // 該點的腳底高度
+  // 該點的腳底高度;nearY(目前腳底高度)用來在重疊的路面之間選最接近的那段,見 walkWorld.ts
+  surfaceY(x: number, z: number, nearY?: number): number
   blocked(x: number, z: number, r: number): boolean // 半徑 r 的圓會撞到固體
 }
 export type WalkOpts = { radius: number; maxStep: number }
@@ -96,7 +97,7 @@ export function createColliderIndex(polys: ReadonlyArray<Poly>, cell = 4) {
 
 function canStand(world: WalkWorld, o: WalkOpts, fromY: number, x: number, z: number): { ok: boolean; y: number } {
   if (!world.inside(x, z) || world.blocked(x, z, o.radius)) return { ok: false, y: fromY }
-  const y = world.surfaceY(x, z)
+  const y = world.surfaceY(x, z, fromY)
   return { ok: Math.abs(y - fromY) <= o.maxStep, y }
 }
 

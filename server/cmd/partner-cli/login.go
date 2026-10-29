@@ -13,7 +13,10 @@ import (
 	"os/exec"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/tim72117/tripace/internal/clipage"
 )
 
 // cmdLogin 支援兩種登入:瀏覽器核准(-web,沒給 -email/-password 時的預設)
@@ -126,25 +129,26 @@ func loginViaBrowser(mainBase, console string) (string, error) {
 		err   error
 	}
 	done := make(chan result, 1)
-	var handled bool
+	// 只有第一次請求真正換 token(sync.Once),同時進來的重複請求等它做完、拿同一個結果;
+	// 頁面在換完之後才寫,瀏覽器顯示的是真正的結果
+	var once sync.Once
+	var ok bool
 	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/callback" {
 			http.NotFound(w, r)
 			return
 		}
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		fmt.Fprint(w, `<!doctype html><html><body style="font-family:sans-serif;padding:2rem"><p>可以關閉這個分頁,回到終端機繼續。</p></body></html>`)
-		if handled {
-			return
-		}
-		handled = true
-		code := r.URL.Query().Get("code")
-		if code == "" {
-			done <- result{err: fmt.Errorf("callback 未帶 code(登入是否被取消了?)")}
-			return
-		}
-		t, err := cliAuthExchange(mainBase, code)
-		done <- result{token: t, err: err}
+		once.Do(func() {
+			code := r.URL.Query().Get("code")
+			if code == "" {
+				done <- result{err: fmt.Errorf("callback 未帶 code(登入是否被取消了?)")}
+				return
+			}
+			t, err := cliAuthExchange(mainBase, code)
+			ok = err == nil
+			done <- result{token: t, err: err}
+		})
+		clipage.WriteLoginDone(w, "partner-cli", ok)
 	})}
 	go func() { _ = srv.Serve(listener) }()
 	defer srv.Close()

@@ -81,6 +81,8 @@ export type LayoutCamera = {
 }
 
 export type IslandLayout = {
+  // grid——世界格子規格(logic/world/grid.ts):地形與散落物依它分組做剔除、串流、LOD。不填 = 預設 32 m。
+  grid?: { cellSize: number }
   // 島的輪廓(頂視圖多邊形,順時針),島體會由它擠出成一塊厚地。
   outline: Pt[]
   topY: number // 最低層地面的表面高度(通常 0)

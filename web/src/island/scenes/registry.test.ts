@@ -71,14 +71,14 @@ describe('範例小島的 feature flag(VITE_FEATURE_ISLAND_SAMPLE)', () => {
   })
 
   describe('高細節 GLB', () => {
-    const withGlb = (): SceneModule => ({ ...mod(), glbModels: { m1: { url: '/m1.glb', unit: 0.5 } } })
+    const withGlb = (): SceneModule => ({ ...mod(), glbModels: { m1: { url: '/m1.glb' } } })
     const scene = { name: 'fake-scene' } as never
     const mk = (loadGlb: (url: string) => Promise<never>) => createSceneRegistry([def('a', async () => withGlb())], 'a', shared, loadGlb)
 
-    it('load:把 GLB 掛在同 id 的模型上(連同 unit),宣告式欄位保留', async () => {
+    it('load:把 GLB 掛在同 id 的模型上,宣告式欄位保留', async () => {
       const r = mk(async () => scene)
       const data = await r.load('a')
-      expect(data.models.m1).toMatchObject({ name: 'm1', glb: { scene, unit: 0.5 } })
+      expect(data.models.m1).toMatchObject({ name: 'm1', glb: { scene } })
     })
     it('loadBase:不載入 GLB(首頁縮小版不該為它下載)', async () => {
       const loadGlb = vi.fn(async () => scene)
@@ -102,7 +102,7 @@ describe('範例小島的 feature flag(VITE_FEATURE_ISLAND_SAMPLE)', () => {
       const first = await r.load('a')
       expect(first.models.m1).toEqual({ name: 'm1' }) // 第一次:簡化版
       const second = await r.load('a')
-      expect(second.models.m1).toMatchObject({ glb: { scene, unit: 0.5 } }) // 重試成功
+      expect(second.models.m1).toMatchObject({ glb: { scene } }) // 重試成功
       expect(loadGlb).toHaveBeenCalledTimes(2)
       await r.load('a')
       expect(loadGlb).toHaveBeenCalledTimes(2) // 成功後才快取
@@ -137,7 +137,7 @@ describe('範例小島的 feature flag(VITE_FEATURE_ISLAND_SAMPLE)', () => {
     })
     it('版面沒用到的模型 id 不載入它的 GLB', async () => {
       const loadGlb = vi.fn(async () => scene)
-      const r = createSceneRegistry([def('a', async () => ({ ...mod(), glbModels: { unused: { url: '/x.glb', unit: 1 } } }))], 'a', shared, loadGlb)
+      const r = createSceneRegistry([def('a', async () => ({ ...mod(), glbModels: { unused: { url: '/x.glb' } } }))], 'a', shared, loadGlb)
       await r.load('a')
       expect(loadGlb).not.toHaveBeenCalled()
     })

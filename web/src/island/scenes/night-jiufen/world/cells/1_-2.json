@@ -1,0 +1,7 @@
+{
+  "format": 1,
+  "cell": "1_-2",
+  "placements": [
+    {"model":"deco-cliff-rock","x":49.11,"z":-36.63,"y":37.76,"rotY":1.06,"scale":1.07,"tilt":[-1.14,-1.16],"seed":259316,"layer":"cliff-rocks","source":"rule"}
+  ]
+}

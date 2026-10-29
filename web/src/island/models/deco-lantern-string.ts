@@ -2,7 +2,7 @@ import type { Model3D, Part } from '../three/model';
 
 // 一串燈籠：兩根木柱之間拉一條繩，五盞紅燈籠微微下垂成弧線，各自以不同相位擺動。
 // 設計意圖：跨在步道上方或沿屋前排列，夜晚形成一條紅色光帶，是九份街景的「線條」元素。
-// 尺寸：寬 1（柱到柱）、高約 1.05。建議 scale 3~5（跨過 3~5 格寬的步道），rotY 讓燈串與步道垂直。
+// 尺寸：寬 1（柱到柱）、高約 1.05。真實尺寸跨距約 5.6 m(跨過步道),rotY 讓燈串與步道垂直。
 const LANTERN_XS = [-0.32, -0.16, 0, 0.16, 0.32];
 
 const lanterns: Part[] = LANTERN_XS.map((x, i) => {
@@ -20,6 +20,7 @@ const lanterns: Part[] = LANTERN_XS.map((x, i) => {
 });
 
 const model: Model3D = {
+  unit: 5.625, // 真實尺寸(1 格 = 1 m):燈籠串跨距約 5.7 m(橫過步道)
   palette: {
     wood: '#7a4b2e',
     rope: '#2e2422',

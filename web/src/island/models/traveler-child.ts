@@ -2,8 +2,9 @@ import type { Model3D } from '../three/model';
 
 // 旅人（小孩）：珊瑚紅上衣、黃色漁夫帽，右手拿著一串剛買的魚丸（基山街的小吃）。
 // 頭身比刻意誇張（頭大），步伐小、彈跳明顯，跟在大人身邊顯得蹦蹦跳跳。
-// 尺寸：高約 0.68、寬約 0.32。建議 scale 與 traveler-parent 相同（1.6~1.8）。
+// 尺寸：高約 0.68、寬約 0.32。unit 與 traveler-parent 相同(真實身高約 1.18 m),身高比例才對。
 const model: Model3D = {
+  unit: 1.7, // 真實尺寸(1 格 = 1 m):小孩約 1.18 m 高(和家長同一個 unit,身高比例才對)
   palette: {
     shirt: '#e86a4f',
     shorts: '#3f7d8c',

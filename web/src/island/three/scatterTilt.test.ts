@@ -8,7 +8,7 @@ const models: Record<string, Model3D> = { rock: { parts: [{ shape: { type: 'box'
 
 function up(tilt: [number, number] | undefined, rotY: number) {
   const { group } = buildScatter([{ model: 'rock', x: 1, y: 2, z: 3, rotY, tilt }], models, { shadows: false })
-  const mesh = group.children[0] as THREE.InstancedMesh
+  const mesh = group.children[0] as THREE.BatchedMesh
   const m = new THREE.Matrix4()
   mesh.getMatrixAt(0, m)
   const v = new THREE.Vector3(0, 1, 0).transformDirection(m)

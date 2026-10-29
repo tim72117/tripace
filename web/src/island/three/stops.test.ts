@@ -66,7 +66,7 @@ describe('buildStops 的燈籠錨點', () => {
     }
     return g
   }
-  const HOUSE: Model3D = { parts: [], glb: { scene: glbScene(), unit: 0.5 } }
+  const HOUSE: Model3D = { parts: [], glb: { scene: glbScene() } }
   const anchored: IslandStop = { ...stop(0, true), anchor: { stopId: 's0', model: 'house', x: 10, z: 20, label: '站0', time: '17:30' } }
 
   it('錨點用實例畫(2 個 InstancedMesh),位置跟著站點的位置與縮放;燈身發光材質收進 glowMats', () => {
@@ -79,7 +79,7 @@ describe('buildStops 的燈籠錨點', () => {
     const mat = new THREE.Matrix4()
     instanced[0].getMatrixAt(1, mat)
     const p = new THREE.Vector3().setFromMatrixPosition(mat)
-    expect([p.x, p.y, p.z]).toEqual([10.5, 0.5, 20.5]) // (1,1,1) × 0.5 + 站點位置 (10,0,20)
+    expect([p.x, p.y, p.z]).toEqual([11, 1, 21]) // GLB 是公尺、放進場景不換算:(1,1,1) + 站點位置 (10,0,20)
     expect(v.glowMats.some((g) => instanced[0].material === g.m)).toBe(true)
   })
 
