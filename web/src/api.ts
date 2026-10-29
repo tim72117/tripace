@@ -1342,7 +1342,7 @@ export function fetchPublicItineraryPageList(cfg: ClientConfig) {
 // 就只回傳「展開 photoId 成可顯示圖片」所需的最小欄位,不是省略前端
 // 自己挑欄位,兩邊型別定義要對應一致。
 export interface PublicPhotoVariant {
-  kind: string // "thumbnail" | "large"
+  kind: string // "thumbnail" | "large" | "llm"
   url: string
   width: number
   height: number
@@ -1375,11 +1375,11 @@ export function fetchPublicBlogPhotosByIDs(cfg: ClientConfig, ids: string[]) {
 // GUEST_CFG,否則一律收到 401。 ----
 
 // PhotoVariant:對齊後端 model.PhotoVariant 的 JSON 形狀——原圖的其中一種
-// 尺寸衍生版本("thumbnail"/"large")。
+// 尺寸衍生版本("thumbnail"/"large"/"llm",llm 是給 LLM 看圖推論用)。
 export interface PhotoVariant {
   id: string
   photoId: string
-  kind: string // "thumbnail" | "large"
+  kind: string // "thumbnail" | "large" | "llm"
   url: string
   width: number
   height: number
@@ -1438,15 +1438,36 @@ export function createPhotoUploadURL(cfg: ClientConfig, contentType: string) {
 }
 
 // completePhotoUpload:POST /v1/blog/photos/{photoId}/complete——通知後端
-// 原圖已經上傳完成,觸發背景處理(下載原圖、產生 thumbnail/large 兩種
-// 衍生版本)。立即回應 "processing",不等背景處理完成(見後端
-// handleBlogPhotoComplete 的完整說明)。
+// 原圖已經上傳完成。縮圖統一由前端產生並先用 uploadPhotoVariant 上傳(後端縮圖預設關閉)
+// 時,後端只檢查 thumbnail/large 是否齊全並回 "ready";後端縮圖開啟時才會觸發背景處理並
+// 回 "processing"(見後端 handleBlogPhotoComplete 的完整說明)。
 export function completePhotoUpload(cfg: ClientConfig, photoId: string) {
   return request<{ status: string }>(
     cfg,
     'POST',
     `/v1/blog/photos/${encodeURIComponent(photoId)}/complete`,
   )
+}
+
+// uploadPhotoVariant:PUT /v1/blog/photos/{photoId}/variants/{kind}——上傳前端用 canvas 縮好的
+// JPEG 衍生圖(kind 為 thumbnail / large / llm,見 blog/photoVariants.ts)。請求內容是圖片位元組
+// 本身(不是 JSON),所以不走 request();同一張圖同一種 kind 重複上傳回 exists,視為成功。
+export async function uploadPhotoVariant(cfg: ClientConfig, photoId: string, kind: string, blob: Blob) {
+  const url = cfg.baseURL.replace(/\/+$/, '') + `/v1/blog/photos/${encodeURIComponent(photoId)}/variants/${encodeURIComponent(kind)}`
+  const res = await fetch(url, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'image/jpeg', ...(cfg.token ? { Authorization: `Bearer ${cfg.token}` } : {}) },
+    body: blob,
+  })
+  if (!res.ok) {
+    let detail = ''
+    try {
+      detail = ((await res.json()) as { error?: { message?: string } }).error?.message ?? ''
+    } catch {
+      /* 非 JSON 回應就只報狀態碼 */
+    }
+    throw new Error(`上傳${kind}縮圖失敗(HTTP ${res.status}${detail ? `:${detail}` : ''})`)
+  }
 }
 
 // retryPhotoProcessing:POST /v1/blog/photos/{photoId}/retry——針對處理

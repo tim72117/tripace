@@ -5,6 +5,7 @@ import { LoginForm, LoginCard } from '../home/LoginForm'
 import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from '../home/SiteNavButtons'
 import * as api from '../api'
 import type { UploadedPhoto } from '../api'
+import { VARIANT_KINDS, generatePhotoVariants, type PhotoVariantKind } from './photoVariants'
 import { ErrorBanner, errMsg } from '../AppCommon'
 import { Button } from '../components/Button'
 import { PhotoFocalEditor } from './PhotoFocalEditor'
@@ -44,6 +45,15 @@ function isDarkNow(theme: ReturnType<typeof useAppState>['theme']): boolean {
   if (theme === 'dark') return true
   if (theme === 'light') return false
   return typeof window !== 'undefined' && window.matchMedia?.('(prefers-color-scheme: dark)').matches
+}
+
+// StagedPhoto:已在前端縮圖、尚未上傳的圖片(預覽用 thumbnail blob 的 object URL)。
+interface StagedPhoto {
+  key: string
+  file: File
+  variants: Record<PhotoVariantKind, Blob>
+  previewUrl: string
+  error?: string
 }
 
 export function PhotoManagerPage() {
@@ -151,6 +161,11 @@ export function PhotoManagerBody({ cfg }: { cfg: api.ClientConfig }) {
   // 四個字(多張時完全看不出目前卡在哪)。
   const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null)
   const [editingPhoto, setEditingPhoto] = useState<UploadedPhoto | null>(null)
+  // staged:選好檔案、前端縮圖完成但「尚未上傳」的圖片。使用者先看到縮圖預覽,按「上傳」才送後端。
+  const [staged, setStaged] = useState<StagedPhoto[]>([])
+  const [preparing, setPreparing] = useState(false)
+  const stagedRef = useRef<StagedPhoto[]>([])
+  stagedRef.current = staged
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -174,6 +189,7 @@ export function PhotoManagerBody({ cfg }: { cfg: api.ClientConfig }) {
   useEffect(() => {
     return () => {
       if (pollTimerRef.current != null) clearTimeout(pollTimerRef.current)
+      stagedRef.current.forEach((p) => URL.revokeObjectURL(p.previewUrl))
     }
   }, [])
 
@@ -207,7 +223,9 @@ export function PhotoManagerBody({ cfg }: { cfg: api.ClientConfig }) {
   // complete→樂觀插入列表→觸發輪詢)——從 handleFileSelected 抽出,讓
   // 多選上傳(逐一呼叫這支函式)跟單選上傳共用同一套邏輯,不重複寫。
   // 失敗時拋出 error,呼叫端(handleFileSelected)決定要不要中斷整批。
-  async function uploadOneFile(file: File) {
+  // 縮圖已在選檔時由前端產生(thumbnail/large/llm,見 photoVariants.ts 與 handleFilesPicked),
+  // 這裡只負責把原圖與縮圖送上去。
+  async function uploadOneFile(file: File, variants: Record<PhotoVariantKind, Blob>) {
     const { photoId, uploadUrl, publicUrl } = await api.createPhotoUploadURL(cfg, file.type)
 
     const putRes = await fetch(uploadUrl, {
@@ -219,7 +237,18 @@ export function PhotoManagerBody({ cfg }: { cfg: api.ClientConfig }) {
       throw new Error(`上傳到儲存空間失敗(HTTP ${putRes.status}）`)
     }
 
-    await api.completePhotoUpload(cfg, photoId)
+    // 依序上傳縮圖(順序見 VARIANT_KINDS)。thumbnail/large 失敗會讓整張上傳失敗;
+    // llm 是給 LLM 推論用的選填縮圖,失敗只記 console,不影響這張圖的顯示與使用。
+    for (const kind of VARIANT_KINDS) {
+      try {
+        await api.uploadPhotoVariant(cfg, photoId, kind, variants[kind])
+      } catch (e) {
+        if (kind !== 'llm') throw e
+        console.warn('llm 縮圖上傳失敗(不影響顯示):', e)
+      }
+    }
+
+    const { status } = await api.completePhotoUpload(cfg, photoId)
 
     // 樂觀地把這張圖以 pending 狀態插入列表,讓使用者立刻看到回饋,不用
     // 等下一次輪詢/手動重新整理才出現在畫面上。
@@ -229,7 +258,7 @@ export function PhotoManagerBody({ cfg }: { cfg: api.ClientConfig }) {
         id: photoId,
         ownerId: '',
         originalUrl: publicUrl,
-        status: 'pending',
+        status,
         variants: [],
         createdAt: now,
         updatedAt: now,
@@ -240,34 +269,69 @@ export function PhotoManagerBody({ cfg }: { cfg: api.ClientConfig }) {
     pollUntilSettled(photoId, POLLING_MAX_ATTEMPTS)
   }
 
-  // handleFileSelected:多選上傳入口——逐一依序上傳(不是 Promise.all
-  // 並行),理由對齊 CLI blog-photo upload -skip-process 開頭說明的
-  // 既有教訓:Cloud Run 預設只在處理 HTTP 請求期間分配 CPU,短時間內
-  // 平行觸發大量背景處理(每張上傳完成後端都會另外起一個背景 goroutine
-  // 做 resize)容易疊加成資源競爭甚至 OOM,逐一上傳讓每一張的背景處理
-  // 有機會在下一張開始前先完成一部分。其中一張失敗不中斷整批——累積
-  // 失敗訊息,讓使用者看到「幾張成功、哪幾張失敗」,不是選了 10 張結果
-  // 第 3 張失敗就讓後面 7 張全部不上傳。
-  async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+  // handleFilesPicked:選檔入口——只在前端解碼並產生縮圖,放進 staged 顯示預覽,不碰後端。
+  // 縮圖失敗(例如瀏覽器解不開的格式)的檔案不會進 staged,錯誤訊息彙總顯示。
+  async function handleFilesPicked(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? [])
     e.target.value = '' // 允許連續選同樣的檔案觸發 onChange
     if (files.length === 0) return
 
+    setPreparing(true)
+    setErr(null)
+    const failures: string[] = []
+    try {
+      for (const file of files) {
+        try {
+          const variants = await generatePhotoVariants(file)
+          const item: StagedPhoto = {
+            key: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            file,
+            variants,
+            previewUrl: URL.createObjectURL(variants.thumbnail),
+          }
+          setStaged((prev) => [...prev, item])
+        } catch (e) {
+          failures.push(`${file.name}: ${errMsg(e)}`)
+        }
+      }
+      if (failures.length > 0) setErr(`部分圖片無法處理(${failures.length}/${files.length}):${failures.join('；')}`)
+    } finally {
+      setPreparing(false)
+    }
+  }
+
+  function removeStaged(key: string) {
+    setStaged((prev) => {
+      const hit = prev.find((p) => p.key === key)
+      if (hit) URL.revokeObjectURL(hit.previewUrl)
+      return prev.filter((p) => p.key !== key)
+    })
+  }
+
+  // handleUploadStaged:按「上傳」才把 staged 逐一送後端(不是並行,理由見 CLI blog-photo
+  // upload 的既有教訓:避免短時間疊加資源競爭)。成功的從 staged 移除,失敗的留著並標上錯誤,
+  // 讓使用者可以再按一次重試或移除;其中一張失敗不中斷整批。
+  async function handleUploadStaged() {
+    const batch = staged
+    if (batch.length === 0) return
     setUploading(true)
     setErr(null)
     const failures: string[] = []
     try {
-      for (let i = 0; i < files.length; i++) {
-        setUploadProgress({ done: i, total: files.length })
+      for (let i = 0; i < batch.length; i++) {
+        const item = batch[i]
+        setUploadProgress({ done: i, total: batch.length })
         try {
-          await uploadOneFile(files[i])
+          await uploadOneFile(item.file, item.variants)
+          removeStaged(item.key)
         } catch (e) {
-          failures.push(`${files[i].name}: ${errMsg(e)}`)
+          const msg = errMsg(e)
+          failures.push(`${item.file.name}: ${msg}`)
+          setStaged((prev) => prev.map((p) => (p.key === item.key ? { ...p, error: msg } : p)))
         }
       }
-      setUploadProgress({ done: files.length, total: files.length })
       if (failures.length > 0) {
-        setErr(`部分圖片上傳失敗(${failures.length}/${files.length}):${failures.join('；')}`)
+        setErr(`部分圖片上傳失敗(${failures.length}/${batch.length}):${failures.join('；')}`)
       }
     } finally {
       setUploading(false)
@@ -345,22 +409,53 @@ export function PhotoManagerBody({ cfg }: { cfg: api.ClientConfig }) {
             Button 既有的 compact prop(見該元件開頭說明),/blog/photos
             獨立路由(沒有 compact 視覺需求差異,但維持一致尺寸也沒有
             壞處)跟編輯器卡片共用同一個外觀。 */}
-        <Button variant="primary" compact onClick={() => fileInputRef.current?.click()} disabled={uploading}>
-          {uploadProgress
-            ? `上傳中…(${uploadProgress.done}/${uploadProgress.total})`
-            : uploading
-              ? '上傳中…'
-              : '上傳圖片'}
+        <Button variant="secondary" compact onClick={() => fileInputRef.current?.click()} disabled={uploading || preparing}>
+          {preparing ? '處理縮圖中…' : '選擇圖片'}
         </Button>
+        {staged.length > 0 && (
+          <Button variant="primary" compact onClick={handleUploadStaged} disabled={uploading || preparing}>
+            {uploadProgress
+              ? `上傳中…(${uploadProgress.done}/${uploadProgress.total})`
+              : `上傳 ${staged.length} 張`}
+          </Button>
+        )}
         <input
           ref={fileInputRef}
           type="file"
           accept="image/*"
           multiple
           className={styles.hiddenFileInput}
-          onChange={handleFileSelected}
+          onChange={handleFilesPicked}
         />
       </div>
+
+      {staged.length > 0 && (
+        <div className={styles.grid} style={{ marginBottom: 16 }}>
+          {staged.map((item) => (
+            <div key={item.key} className={styles.card}>
+              <div className={styles.thumbWrap}>
+                <img src={item.previewUrl} alt="" className={styles.thumbImage} />
+              </div>
+              <div className={styles.meta}>
+                <span className={styles.note} title={item.file.name}>{item.file.name}</span>
+                {item.error && <span className={styles.noteEmpty} style={{ color: 'var(--ios-red, #d9534f)' }}>{item.error}</span>}
+              </div>
+              <div className={styles.cardFooter}>
+                <span className={styles.statusText}>{item.error ? '上傳失敗' : '待上傳'}</span>
+                <button
+                  type="button"
+                  className={styles.deleteBtn}
+                  onClick={() => removeStaged(item.key)}
+                  disabled={uploading}
+                  title="移除這張(不會上傳)"
+                >
+                  移除
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {loading ? (
         <div className="empty">載入中…</div>

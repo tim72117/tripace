@@ -33,6 +33,7 @@ package api
 import (
 	"context"
 	"errors"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -163,6 +164,30 @@ func (s *Server) handleBlogPhotoTriggerProcessing(w http.ResponseWriter, r *http
 	photoID := r.PathValue("photoId")
 	photo, ok := s.loadOwnedUploadedPhoto(w, r, photoID, user.ID)
 	if !ok {
+		return
+	}
+
+	// 後端縮圖關閉(預設,見 Server.blogPhotoServerResize):縮圖由前端產生並先上傳,
+	// 這裡只確認 thumbnail 與 large 都在了就標成 ready,不下載原圖、不 resize。
+	// llm 縮圖是選填(給 LLM 推論用,缺了不影響顯示)。
+	if !s.blogPhotoServerResize {
+		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/retry") {
+			writeErr(w, http.StatusConflict, "server_resize_disabled", "後端縮圖目前關閉,請重新上傳圖片")
+			return
+		}
+		have := map[string]bool{}
+		for _, v := range photo.Variants {
+			have[v.Kind] = true
+		}
+		if !have[photoupload.VariantThumbnail] || !have[photoupload.VariantLarge] {
+			writeErr(w, http.StatusConflict, "variants_missing", "請先上傳 thumbnail 與 large 縮圖")
+			return
+		}
+		if err := s.store.SetUploadedPhotoStatus(photo.ID, "ready"); err != nil {
+			writeErr(w, http.StatusInternalServerError, "status_update_failed", err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 		return
 	}
 
@@ -306,6 +331,75 @@ func (s *Server) processUploadedPhoto(ctx context.Context, photo model.UploadedP
 		}
 	}
 	return nil
+}
+
+// clientVariantMaxBytes——前端衍生圖請求內容的大小上限。thumbnail 約數十 KB、llm 約
+// 100~300KB、large(最長邊 1600、品質 0.9)通常 300KB~1MB,4MB 留足餘裕又足以擋掉誤傳的原圖。
+const clientVariantMaxBytes = 4 << 20
+
+// handleBlogPhotoVariantUpload 處理 PUT /v1/blog/photos/{photoId}/variants/{kind}——
+// 接收前端用 canvas 縮好的 JPEG(請求內容就是圖片位元組,Content-Type: image/jpeg),
+// 存成這張圖的衍生版本。kind 只接受 thumbnail / large / llm(llm 是給 LLM 看圖推論用的
+// 尺寸,見 photoupload.VariantLLM)。2026-10 起縮圖統一由前端產生,見 Server.blogPhotoServerResize。
+//
+// 不走 pre-signed URL:縮圖只有數十 KB~1MB,直接經過 server 比多一輪簽發/確認簡單,
+// 也能在這裡解碼驗證它真的是 JPEG、寬高自己量(不信任前端回報的數字)。
+// 只收 JPEG(檢查檔頭,避免把任意內容以 image/jpeg 寫進公開 bucket)。
+// 同一張圖同一種 kind 已存在時回 200 status=exists,不覆寫資料庫記錄。
+func (s *Server) handleBlogPhotoVariantUpload(w http.ResponseWriter, r *http.Request) {
+	user := s.userFor(r)
+	if s.isGuestUser(user) {
+		writeErr(w, http.StatusUnauthorized, "unauthorized", "請先登入")
+		return
+	}
+	kind := r.PathValue("kind")
+	maxEdge, ok := photoupload.ClientVariantMaxEdge(kind)
+	if !ok {
+		writeErr(w, http.StatusBadRequest, "invalid_input", "kind 必須是 thumbnail、large 或 llm")
+		return
+	}
+	photo, ok := s.loadOwnedUploadedPhoto(w, r, r.PathValue("photoId"), user.ID)
+	if !ok {
+		return
+	}
+
+	data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, clientVariantMaxBytes))
+	if err != nil {
+		writeErr(w, http.StatusRequestEntityTooLarge, "too_large", "縮圖過大")
+		return
+	}
+	if len(data) < 3 || data[0] != 0xFF || data[1] != 0xD8 || data[2] != 0xFF {
+		writeErr(w, http.StatusBadRequest, "invalid_input", "縮圖必須是 JPEG")
+		return
+	}
+	decoded, err := photoupload.DecodeImage(data, "image/jpeg")
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid_input", "縮圖無法解析")
+		return
+	}
+	if decoded.Width > maxEdge || decoded.Height > maxEdge {
+		writeErr(w, http.StatusBadRequest, "invalid_input", "縮圖尺寸過大")
+		return
+	}
+
+	url, err := s.blogPhotoUploader.UploadVariant(r.Context(), photo.OwnerID, photo.ID, kind, data)
+	if err != nil {
+		if errors.Is(err, photoupload.ErrNoBucket) {
+			writeErr(w, http.StatusServiceUnavailable, "upload_disabled", "圖片上傳功能目前未啟用")
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, "upload_failed", err.Error())
+		return
+	}
+	if _, err := s.store.CreatePhotoVariant(photo.ID, kind, url, decoded.Width, decoded.Height); err != nil {
+		if errors.Is(err, store.ErrAlreadyExists) {
+			writeJSON(w, http.StatusOK, map[string]string{"status": "exists"})
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, "create_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "created"})
 }
 
 // handleBlogPhotoList 處理 GET /v1/blog/photos——列出目前登入者自己
