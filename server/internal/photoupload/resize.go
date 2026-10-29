@@ -43,7 +43,29 @@ import (
 const (
 	VariantThumbnail = "thumbnail"
 	VariantLarge     = "large"
+	// VariantLLM——給 LLM 看圖推論用的縮圖(2026-10 新增)。跟上面兩種不同:
+	// 它由前端 canvas 縮好後直接上傳(見 api/blog_photo.go
+	// handleBlogPhotoLLMVariant),不是後端 GenerateVariants 產生的,所以刻意
+	// 不放進 variantMaxEdge(否則 GenerateVariants 會迭代到它,多產一張)。
+	VariantLLM = "llm"
 )
+
+// clientVariantMaxEdge——前端上傳的衍生圖接受的最長邊上限(像素)。前端目標尺寸
+// thumbnail 400 / large 1600 / llm 1024(見 web/src/blog/photoVariants.ts),這裡各
+// 放寬一些只為擋掉明顯不是縮圖的大圖(避免拿衍生圖端點當原圖的第二個上傳通道),
+// 不是前端該採用的目標尺寸。
+var clientVariantMaxEdge = map[string]int{
+	VariantThumbnail: 512,
+	VariantLarge:     2048,
+	VariantLLM:       2048,
+}
+
+// ClientVariantMaxEdge 回傳前端可上傳的衍生圖種類 kind 的最長邊上限;kind 不是允許
+// 的種類時 ok 為 false。
+func ClientVariantMaxEdge(kind string) (maxEdge int, ok bool) {
+	maxEdge, ok = clientVariantMaxEdge[kind]
+	return
+}
 
 // variantMaxEdge 定義各 VariantKind 的最長邊限制(像素)——見任務規格:
 // thumbnail 縮圖用,largs 文章內文用。這裡用 map 而非各自獨立常數,

@@ -45,6 +45,8 @@ func newBlogPhotoFixture(t *testing.T) *blogPhotoFixture {
 
 	memStore := photoupload.NewMemoryObjectStore()
 	s.blogPhotoUploader = photoupload.NewForTest("test-bucket", memStore)
+	// 既有測試驗證的是「後端縮圖」流程,所以夾具預設開啟;前端縮圖(預設)的測試自行關閉。
+	s.blogPhotoServerResize = true
 
 	user, err := s.store.CreatePasswordUser("usr_blogger", "部落客測試員", "#8C7B6A", "blogger@example.com", "hash")
 	if err != nil {
@@ -691,4 +693,90 @@ func waitForPhotoStatus(t *testing.T, s *Server, photoID, wantStatus string) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatalf("等待 Status 變成 %q 逾時", wantStatus)
+}
+
+// putVariant 以原始位元組 PUT 衍生圖(請求內容不是 JSON,所以不走 doRequest)。
+func (f *blogPhotoFixture) putVariant(t *testing.T, photoID, kind string, data []byte, token string, wantStatus int) {
+	t.Helper()
+	req := httptest.NewRequest("PUT", "/v1/blog/photos/"+photoID+"/variants/"+kind, bytes.NewReader(data))
+	req.Header.Set("Content-Type", "image/jpeg")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	rec := httptest.NewRecorder()
+	f.routes.ServeHTTP(rec, req)
+	if rec.Code != wantStatus {
+		t.Fatalf("PUT variants/%s → %d，預期 %d（body: %s）", kind, rec.Code, wantStatus, rec.Body.String())
+	}
+}
+
+func (f *blogPhotoFixture) newPhoto(t *testing.T) string {
+	t.Helper()
+	got := f.do(t, "POST", "/v1/blog/photos/upload-url", map[string]any{"contentType": "image/jpeg"}, http.StatusOK)
+	return got["photoId"].(string)
+}
+
+// TestBlogPhotoVariantUpload_前端縮圖三種尺寸都能存且記錄實際寬高 驗證前端上傳的
+// thumbnail / large / llm 都寫成 photo_variants,寬高是後端自己量的。
+func TestBlogPhotoVariantUpload_前端縮圖三種尺寸都能存且記錄實際寬高(t *testing.T) {
+	f := newBlogPhotoFixture(t)
+	f.srv.blogPhotoServerResize = false
+	photoID := f.newPhoto(t)
+
+	f.putVariant(t, photoID, "thumbnail", makeTestJPEGBytes(t, 400, 300), f.token, http.StatusOK)
+	f.putVariant(t, photoID, "large", makeTestJPEGBytes(t, 1600, 1200), f.token, http.StatusOK)
+	f.putVariant(t, photoID, "llm", makeTestJPEGBytes(t, 1024, 768), f.token, http.StatusOK)
+	// 重複上傳同一種視為已存在,不報錯。
+	f.putVariant(t, photoID, "llm", makeTestJPEGBytes(t, 1024, 768), f.token, http.StatusOK)
+
+	photo, err := f.srv.store.GetUploadedPhoto(photoID)
+	if err != nil {
+		t.Fatalf("GetUploadedPhoto: %v", err)
+	}
+	dims := map[string][2]int{}
+	for _, v := range photo.Variants {
+		dims[v.Kind] = [2]int{v.Width, v.Height}
+	}
+	if len(dims) != 3 || dims["llm"] != [2]int{1024, 768} || dims["thumbnail"] != [2]int{400, 300} {
+		t.Fatalf("variant 寬高不符,got %v", dims)
+	}
+}
+
+func TestBlogPhotoVariantUpload_拒絕不合法的請求(t *testing.T) {
+	f := newBlogPhotoFixture(t)
+	photoID := f.newPhoto(t)
+
+	f.putVariant(t, photoID, "huge", makeTestJPEGBytes(t, 100, 100), f.token, http.StatusBadRequest)             // 不認得的 kind
+	f.putVariant(t, photoID, "llm", []byte("not a jpeg"), f.token, http.StatusBadRequest)                        // 不是 JPEG
+	f.putVariant(t, photoID, "thumbnail", makeTestJPEGBytes(t, 1200, 900), f.token, http.StatusBadRequest)       // 對 thumbnail 太大
+	f.putVariant(t, photoID, "llm", makeTestJPEGBytes(t, 100, 100), "", http.StatusUnauthorized)                 // 未登入
+	f.putVariant(t, "pho_not_exist", "llm", makeTestJPEGBytes(t, 100, 100), f.token, http.StatusNotFound)        // 不存在
+	other, err := f.srv.store.CreateUploadedPhoto("usr_someone_else", "https://storage.googleapis.com/test-bucket/user-uploads/usr_someone_else/abc.jpg", "")
+	if err != nil {
+		t.Fatalf("CreateUploadedPhoto: %v", err)
+	}
+	f.putVariant(t, other.ID, "llm", makeTestJPEGBytes(t, 100, 100), f.token, http.StatusNotFound) // 別人的圖
+}
+
+// TestBlogPhotoComplete_後端縮圖關閉時只檢查前端縮圖是否齊全 驗證預設(旗標關閉)行為:
+// 缺 large 回 409,補齊 thumbnail+large 後標成 ready(llm 選填),retry 回 409。
+func TestBlogPhotoComplete_後端縮圖關閉時只檢查前端縮圖是否齊全(t *testing.T) {
+	f := newBlogPhotoFixture(t)
+	f.srv.blogPhotoServerResize = false
+	photoID := f.newPhoto(t)
+
+	f.do(t, "POST", "/v1/blog/photos/"+photoID+"/complete", nil, http.StatusConflict)
+	f.putVariant(t, photoID, "thumbnail", makeTestJPEGBytes(t, 400, 300), f.token, http.StatusOK)
+	f.do(t, "POST", "/v1/blog/photos/"+photoID+"/complete", nil, http.StatusConflict)
+	f.putVariant(t, photoID, "large", makeTestJPEGBytes(t, 1600, 1200), f.token, http.StatusOK)
+
+	got := f.do(t, "POST", "/v1/blog/photos/"+photoID+"/complete", nil, http.StatusOK)
+	if got["status"] != "ready" {
+		t.Fatalf("應回 ready,got %v", got)
+	}
+	photo, _ := f.srv.store.GetUploadedPhoto(photoID)
+	if photo.Status != "ready" {
+		t.Fatalf("Status 應為 ready,got %q", photo.Status)
+	}
+	f.do(t, "POST", "/v1/blog/photos/"+photoID+"/retry", nil, http.StatusConflict)
 }

@@ -96,6 +96,13 @@ type Server struct {
 	// bucket 為空字串的 SignedUploader,各方法呼叫會直接回傳
 	// photoupload.ErrNoBucket,呼叫端(blog_photo.go)據此降級回應。
 	blogPhotoUploader *photoupload.SignedUploader
+	// blogPhotoServerResize——後端是否在 complete/retry 時自己下載原圖、產生
+	// thumbnail/large(photoupload.GenerateVariants)。預設關閉(環境變數
+	// BLOG_PHOTO_SERVER_RESIZE_ENABLED 明確設為 "true" 才開):2026-10 起縮圖統一由前端
+	// 產生並透過 PUT /v1/blog/photos/{photoId}/variants/{kind} 上傳(含給 LLM 用的 llm 尺寸),
+	// 後端處理先關閉但程式碼保留,日後要改回後端縮圖(例如 CLI 批次上傳)只需開旗標。
+	// 關閉時 complete 只檢查前端是否已上傳齊全,不處理影像。
+	blogPhotoServerResize bool
 
 	// newGeoGeocodeClient 建立 handleGeoGeocode 專用的 geo.Client——預設
 	// geo.New(真的打 Google Places API,見該函式)。只有這支 handler 透過
@@ -423,6 +430,7 @@ func New(st *store.Store, signer *auth.Signer, devMode bool, googleClientID stri
 		log.Printf("!!! 建立使用者上傳圖片用的 GCS uploader 失敗,部落格配圖上傳功能將不可用: %v", err)
 		blogPhotoUploader = &photoupload.SignedUploader{}
 	}
+	blogPhotoServerResize := os.Getenv("BLOG_PHOTO_SERVER_RESIZE_ENABLED") == "true"
 
 	// planAiRateLimiter:兩支 plan-ai 查詢端點各自的視窗長度/次數,見這個
 	// 欄位在 Server struct 上的完整說明(單一 RateLimiter 實例、各自
@@ -507,6 +515,7 @@ func New(st *store.Store, signer *auth.Signer, devMode bool, googleClientID stri
 		photoCache:                  storePhotoCache{store: st},
 		photoUploader:               uploader,
 		blogPhotoUploader:           blogPhotoUploader,
+		blogPhotoServerResize:       blogPhotoServerResize,
 		newGeoGeocodeClient:         geo.New,
 		newPlaceDetailsClient:       geo.New,
 		newMaintenancePhotoClient:   geo.New,
@@ -851,6 +860,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /v1/blog/photos", s.handleBlogPhotoList)
 	mux.HandleFunc("POST /v1/blog/photos/{photoId}/complete", s.handleBlogPhotoComplete)
 	mux.HandleFunc("POST /v1/blog/photos/{photoId}/retry", s.handleBlogPhotoRetry)
+	mux.HandleFunc("PUT /v1/blog/photos/{photoId}/variants/{kind}", s.handleBlogPhotoVariantUpload)
 	mux.HandleFunc("PATCH /v1/blog/photos/{photoId}/focal", s.handleBlogPhotoFocal)
 	mux.HandleFunc("PATCH /v1/blog/photos/{photoId}/note", s.handleBlogPhotoNote)
 	mux.HandleFunc("PATCH /v1/blog/photos/{photoId}/rating", s.handleBlogPhotoRating)
