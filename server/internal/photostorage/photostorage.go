@@ -29,6 +29,7 @@ package photostorage
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -246,10 +247,46 @@ func (u *Uploader) uploadBytes(ctx context.Context, objectName, contentType stri
 	uctx, cancel := context.WithTimeout(ctx, uploadTimeout)
 	defer cancel()
 	if err := u.store.writeObject(uctx, objectName, contentType, r); err != nil {
-		return "", fmt.Errorf("上傳 GCS 失敗: %w", err)
+		return "", &storageError{err: err}
 	}
 
 	return fmt.Sprintf("https://storage.googleapis.com/%s/%s", u.bucket, objectName), nil
+}
+
+// storageError 是「GCS 這一端寫入失敗」的錯誤型別。帳單停用(403)、桶不存在
+// (404)、逾時、5xx 都屬於這一類;圖片格式不對、未設定 bucket 則不是。
+// 呼叫端(見 internal/storagehealth 的斷路器)只該拿前者判斷「儲存服務不
+// 可用」,單張圖片的問題不能讓全站停止補圖,所以需要能區分。
+// 訊息維持原本的「上傳 GCS 失敗: ...」。
+type storageError struct{ err error }
+
+func (e *storageError) Error() string { return "上傳 GCS 失敗: " + e.err.Error() }
+func (e *storageError) Unwrap() error { return e.err }
+
+// IsStorageFailure 判斷 err 是不是 GCS 寫入失敗(基礎設施類錯誤)。
+func IsStorageFailure(err error) bool {
+	var se *storageError
+	return errors.As(err, &se)
+}
+
+// Configured 回報這個 Uploader 是否真的接了 bucket(零值 Uploader 是降級狀態)。
+func (u *Uploader) Configured() bool { return u != nil && u.bucket != "" && u.store != nil }
+
+// probeObjectName 是探測用的固定物件:每次覆寫同一個,不會累積。
+const probeObjectName = "_health/probe.txt"
+
+// Probe 寫入一個幾位元組的固定物件,確認 GCS 現在寫得進去。探測要用「寫」而不是
+// 讀桶設定:帳單停用這類錯誤可能讀得過、寫才失敗,探測必須和實際會失敗的動作一致。
+func (u *Uploader) Probe(ctx context.Context) error {
+	if !u.Configured() {
+		return ErrNoBucket
+	}
+	uctx, cancel := context.WithTimeout(ctx, uploadTimeout)
+	defer cancel()
+	if err := u.store.writeObject(uctx, probeObjectName, "text/plain", strings.NewReader("ok")); err != nil {
+		return &storageError{err: err}
+	}
+	return nil
 }
 
 // decodeDataURI 解析 "data:{contentType};base64,{payload}" 格式的字串,

@@ -2,6 +2,33 @@
 
 本專案先前未維護 CHANGELOG，此檔案從 v0.2.0 開始記錄——之前版本（v0.0.1、v0.1.0、v0.1.1）的異動請直接查對應 tag 的 commit 歷史，不回溯補寫。
 
+## v0.51.0 — 2026-10-29
+
+照片儲存(GCS)斷路器:儲存服務壞掉時,背景補圖在花錢之前就跳過。**無破壞性變更**(只新增套件、方法與回應欄位;既有符號與 API 沒有移除或改名,`photostorage` 的上傳錯誤訊息文字不變)。
+
+### 問題
+
+背景補圖的順序是「打 Google `places.get` → 打 `photoMedia` 下載 → 上傳 GCS → 寫 `photo_assets`」。GCS 上傳失敗(實例:專案帳單停用,`403 accountDisabled`)時前兩步已計費、結果被丟掉,`photo_assets` 沒寫入,下一次請求看到照片還缺又重來——每次載入頁面都重複付費、永遠不會成功。
+
+### 新增
+
+- **`internal/storagehealth` 斷路器**:未知 / 正常 / 異常三態。啟動時先探測再補圖;連續 2 次真實上傳失敗轉異常;異常時跳過補圖並定期探測(間隔 1 分鐘起、失敗加倍、上限 15 分鐘,同時只放一個探測),探測成功即恢復。狀態只存單一實例的記憶體。
+- **`photostorage`**:`Uploader.Probe`(寫 `_health/probe.txt`,用寫入而非讀取,因為帳單停用可能讀得過、寫才失敗)、`Uploader.Configured`、`IsStorageFailure`(只有 GCS 寫入失敗算儲存異常,圖片格式錯誤與未設定 bucket 不算,避免單張問題讓全站停補圖)。
+- `backgroundFillPlacePhoto` 在打 Google 之前先問斷路器;沒接 bucket 的環境斷路器為 nil,行為不變。
+- `geo-api-stats` 回應新增 `photoStorage`(state / skipped / lastError / nextProbe);`geo-stats show` 在異常或尚未探測時印出一段狀態。
+- 狀態轉換寫 log;只有「異常 → 正常」才印恢復(啟動時未知轉正常不印)。
+
+### 文件
+
+- `SKILL.md` 補上 GCS 斷路器的行為,以及本機憑證的配額專案(`quota_project_id`)排查方式。
+
+### 已知限制
+
+- 「已略過 N 次」混有探測失敗那一次,不等於少打的 Google 次數;也不記是哪些地點被略過。
+- CLI 的 `attraction photo-update`(`maintenance.go`)仍是先下載再上傳,GCS 壞時會白付 Google 的錢,尚未接斷路器。
+- 探測寫 `_health/`、實際上傳寫 `place-details/`,若桶改成依前綴設權限,探測可能通過而實際上傳失敗(連續 2 次真實失敗仍會跳閘)。
+- 斷路器異常期間,照片過期的地點回應不帶照片(`photo_assets` 查無有效紀錄時不回退舊來源),這是既有行為。
+
 ## v0.50.0 — 2026-10-29
 
 Google API 呼叫統計與地點詳情快取命中記錄。**無破壞性變更**(只新增資料表、端點、CLI 指令與 geo 套件的觀察者介面;既有公開符號與 API 都沒有移除或改名)。

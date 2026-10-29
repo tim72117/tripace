@@ -45,7 +45,7 @@ func TestGeoStatsShowPrintsTable(t *testing.T) {
 	bin := buildCLI(t)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"from":"2026-10-20","to":"2026-10-21","period":"day","tz":"Asia/Taipei",
+		_, _ = w.Write([]byte(`{"photoStorage":{"state":"open","skipped":7,"lastError":"403 accountDisabled","nextProbe":"2026-10-29 12:05:00"},"from":"2026-10-20","to":"2026-10-21","period":"day","tz":"Asia/Taipei",
 "cache":{"name":"place_details","totals":{"hit":6,"miss":3,"shared":1},"hitRate":0.6,
 "buckets":[{"bucket":"2026-10-20","outcome":"hit","count":6},{"bucket":"2026-10-20","outcome":"miss","count":3},{"bucket":"2026-10-20","outcome":"shared","count":1}]},
 "totals":[{"endpoint":"places.get","count":5,"errorCount":1},{"endpoint":"places.photoMedia","count":2,"errorCount":0}],
@@ -61,7 +61,7 @@ func TestGeoStatsShowPrintsTable(t *testing.T) {
 		t.Fatalf("geo-stats show: %v\n%s", err, out)
 	}
 	s := string(out)
-	for _, want := range []string{"2026-10-20 ~ 2026-10-21", "TOTAL", "7", "PERIOD", "2026-10-20", "2026-10-21", "命中 6(60.0%)", "沒命中 3", "搭便車 1", "HIT%"} {
+	for _, want := range []string{"2026-10-20 ~ 2026-10-21", "TOTAL", "7", "PERIOD", "2026-10-20", "2026-10-21", "照片儲存(GCS):異常", "已略過 7 次", "403 accountDisabled", "命中 6(60.0%)", "沒命中 3", "搭便車 1", "HIT%"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("輸出缺 %q:\n%s", want, s)
 		}

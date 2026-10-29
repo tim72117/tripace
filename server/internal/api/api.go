@@ -23,6 +23,7 @@ import (
 	"github.com/tim72117/tripace/internal/model"
 	"github.com/tim72117/tripace/internal/onagenttools"
 	"github.com/tim72117/tripace/internal/photostorage"
+	"github.com/tim72117/tripace/internal/storagehealth"
 	"github.com/tim72117/tripace/internal/photoupload"
 	"github.com/tim72117/tripace/internal/ratelimits"
 	"github.com/tim72117/tripace/internal/store"
@@ -60,6 +61,12 @@ type Server struct {
 	// photoFillInFlight:正在進行中的背景補圖(key 是 "placeID#photoIndex"),
 	// 見 backgroundFillPlacePhoto 的去重說明。
 	photoFillInFlight sync.Map
+
+	// photoStorageBreaker:GCS 照片儲存的斷路器(見 internal/storagehealth)。
+	// nil 代表沒有接 bucket,補圖行為維持原樣(不擋)。儲存服務壞掉時,
+	// backgroundFillPlacePhoto 在打 Google 之前就跳過,避免每次載入頁面都
+	// 白付 places.get 與 photoMedia 的錢。
+	photoStorageBreaker *storagehealth.Breaker
 
 	// photoExpiryDays:全域「照片過期週期(天)」設定的目前生效值,見 PhotoAssetExpiry。
 	photoExpiryDays atomic.Int64
@@ -475,7 +482,21 @@ func New(st *store.Store, signer *auth.Signer, devMode bool, googleClientID stri
 	// AllowWithLimit 帶入視窗與上限。
 	geoAttractionsIPRateLimiter := apigateway.NewRateLimiter()
 
+	var photoStorageBreaker *storagehealth.Breaker
+	if uploader.Configured() {
+		photoStorageBreaker = storagehealth.New(uploader.Probe)
+		photoStorageBreaker.OnTransition = func(from, to storagehealth.State, err error) {
+			if to == storagehealth.Open {
+				log.Printf("!!! 照片儲存(GCS)異常,暫停背景補圖(不再呼叫 Google 計費 API),定期探測中: %v", err)
+			} else if to == storagehealth.Closed && from == storagehealth.Open {
+				// 只有「異常 → 正常」才算恢復;啟動時「未知 → 正常」沒有壞過,不印。
+				log.Printf("照片儲存(GCS)已恢復(%s → %s),背景補圖繼續", from, to)
+			}
+		}
+	}
+
 	return &Server{
+		photoStorageBreaker:         photoStorageBreaker,
 		store:                       st,
 		signer:                      signer,
 		hub:                         newHub(),

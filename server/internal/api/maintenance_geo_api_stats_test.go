@@ -1,8 +1,13 @@
 package api
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"testing"
+
+	"github.com/tim72117/tripace/internal/photostorage"
+	"github.com/tim72117/tripace/internal/storagehealth"
 )
 
 func TestGeoAPIStatsEndpoint(t *testing.T) {
@@ -47,8 +52,23 @@ func TestGeoAPIStatsEndpoint(t *testing.T) {
 	if ct["hit"] != float64(3) || ct["miss"] != float64(1) || ct["shared"] != float64(0) || cache["hitRate"] != 0.75 {
 		t.Fatalf("快取統計不對: %v", cache)
 	}
+	if ps, _ := resp["photoStorage"].(map[string]any); ps["state"] != "disabled" {
+		t.Fatalf("沒接 bucket 時 photoStorage 應是 disabled: %v", resp["photoStorage"])
+	}
 	if resp["period"] != "day" || resp["tz"] != "UTC" {
 		t.Fatalf("預設值不對: %v", resp)
+	}
+
+	// 接了斷路器且探測失敗:狀態要出現在回應裡。
+	mem := photostorage.NewMemoryObjectStore()
+	mem.WriteErr = errors.New("403 accountDisabled")
+	up := photostorage.NewForTest("b", mem)
+	f.server.photoStorageBreaker = storagehealth.New(up.Probe)
+	f.server.photoStorageBreaker.Allow(context.Background())
+	_, resp = f.do(t, http.MethodGet, path+"?tz=UTC", f.adminToken, "")
+	ps, _ := resp["photoStorage"].(map[string]any)
+	if ps["state"] != "open" || ps["lastError"] == nil || ps["nextProbe"] == nil {
+		t.Fatalf("斷路器異常時應回報 open 與最後錯誤: %v", ps)
 	}
 
 	for name, q := range map[string]string{

@@ -14,6 +14,7 @@ import (
 	"github.com/tim72117/tripace/internal/apigateway"
 	"github.com/tim72117/tripace/internal/geo"
 	"github.com/tim72117/tripace/internal/model"
+	"github.com/tim72117/tripace/internal/photostorage"
 )
 
 // hotelResponse 是 GET /internal/geo/attractions 與
@@ -871,6 +872,12 @@ func (s *Server) backgroundFillPlacePhoto(placeID, requestPath string, indexToFe
 			(a.ExpiresAt == nil || a.ExpiresAt.After(time.Now())) {
 			return
 		}
+		// 儲存服務(GCS)壞掉時在花錢之前就跳過:後面的 places.get 與 photoMedia
+		// 都計費,而上傳失敗的結果會被丟掉、下次請求又重來(見 internal/storagehealth)。
+		// 探測用獨立的 context,不吃下面 15 秒補圖逾時的額度。
+		if s.photoStorageBreaker != nil && !s.photoStorageBreaker.Allow(context.Background()) {
+			return
+		}
 		apiKey := os.Getenv("GOOGLE_PLACES_API_KEY")
 		client := s.newPlaceDetailsClient(apiKey)
 		pctx, pcancel := context.WithTimeout(context.Background(), 15*time.Second)
@@ -913,7 +920,14 @@ func (s *Server) backgroundFillPlacePhoto(placeID, requestPath string, indexToFe
 		gcsURL, err := s.photoUploader.UploadDataURI(pctx, objectKey, photoURL)
 		if err != nil {
 			log.Printf("backgroundFillPlacePhoto: 上傳 GCS 失敗 place_id=%s index=%d: %v", placeID, indexToFetch, err)
+			// 只有 GCS 這一端的失敗才算儲存異常;圖片格式不對之類的單張問題不算。
+			if s.photoStorageBreaker != nil && photostorage.IsStorageFailure(err) {
+				s.photoStorageBreaker.Failure(err)
+			}
 			return
+		}
+		if s.photoStorageBreaker != nil {
+			s.photoStorageBreaker.Success()
 		}
 		now := time.Now()
 		expiresAt := now.Add(s.PhotoAssetExpiry())

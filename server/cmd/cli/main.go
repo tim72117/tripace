@@ -2050,6 +2050,7 @@ func cmdGeoStatsShow(c *httpClient, args []string) {
 
 	fmt.Printf("區間 %s ~ %s(%s,以 %s 切分)\n\n", str(m["from"]), str(m["to"]), str(m["period"]), str(m["tz"]))
 
+	printPhotoStorage(m["photoStorage"])
 	printGeoCacheStats(m["cache"], n, str, rows)
 
 	totals := rows(m["totals"])
@@ -2131,4 +2132,20 @@ func printGeoCacheStats(raw any, n func(any) int, str func(any) string, rows fun
 		fmt.Printf("%-18s %8d %8d %8d %7.1f%%\n", label, h, ms, sh, float64(h)*100/float64(h+ms+sh))
 	}
 	fmt.Println()
+}
+
+// printPhotoStorage 印出照片儲存(GCS)斷路器的狀態。正常(closed)或沒接 bucket
+// (disabled)時不印,異常與尚未探測才印——這是需要有人注意的訊號。
+func printPhotoStorage(raw any) {
+	p, _ := raw.(map[string]any)
+	state, _ := p["state"].(string)
+	skipped, _ := p["skipped"].(float64)
+	switch state {
+	case "open":
+		fmt.Printf("照片儲存(GCS):異常,背景補圖已暫停(已略過 %d 次);下次探測 %v\n", int(skipped), p["nextProbe"])
+		fmt.Printf("  最後錯誤:%v\n\n", p["lastError"])
+	case "unknown":
+		fmt.Println("照片儲存(GCS):啟動後尚未探測,第一次補圖前會先探測。")
+		fmt.Println()
+	}
 }

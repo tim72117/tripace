@@ -222,4 +222,12 @@ Google 按**請求裡最高層級的那一個欄位**計費，所以單一欄位
   `hit`（快取新鮮，沒打 Google）、`miss`（自己打了 Google）、`shared`（同一地點已有請求在打，
   共用那次結果）。命中率 = hit / 全部查詢，`shared` 不算命中但也沒有另外計費。
   這項記錄上線之前的日期沒有資料。
+- **照片儲存（GCS）狀態**：`geo-stats show` 開頭會在儲存異常時多印一段（正常時不印）。
+  背景補圖會先經過斷路器：GCS 寫入失敗（如帳單停用 403）時，補圖在打 Google
+  （`places.get`、`photoMedia`，都計費）**之前**就跳過，並定期探測（寫 `_health/probe.txt`）直到恢復。
+  「已略過 N 次」是啟動以來被擋下的補圖請求數，**混有探測失敗那一次**，不等於少打的 Google 次數。
+  狀態只存在單一實例的記憶體，重啟後從「未知」開始，第一次補圖前先探測。
+  本機排查：憑證是 `gcloud auth application-default login` 產生的，請求算在憑證的
+  `quota_project_id`（`gcloud auth application-default set-quota-project <專案>`），
+  該專案沒有帳單就會 403；伺服器只在啟動時讀憑證，改了要重啟。
 - 「一天」從哪裡切由 `-tz` 決定（預設 Asia/Taipei）；同一批資料用 UTC 與台北切出的每日次數不同。

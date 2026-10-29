@@ -136,7 +136,23 @@ func (s *Server) handleMaintenanceGeoAPIStats(w http.ResponseWriter, r *http.Req
 		hitRate = float64(cacheTotals["hit"]) / float64(cacheAll)
 	}
 
+	// 照片儲存(GCS)斷路器的目前狀態:異常時補圖會在花錢之前被跳過。
+	photoStorage := map[string]any{"state": "disabled"}
+	if s.photoStorageBreaker != nil {
+		photoStorage = map[string]any{}
+		st := s.photoStorageBreaker.Status()
+		photoStorage["state"] = string(st.State)
+		photoStorage["skipped"] = st.Skipped
+		if st.LastError != "" {
+			photoStorage["lastError"] = st.LastError
+		}
+		if !st.NextProbe.IsZero() {
+			photoStorage["nextProbe"] = st.NextProbe.In(loc).Format("2006-01-02 15:04:05")
+		}
+	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
+		"photoStorage": photoStorage,
 		"cache": map[string]any{
 			"name":    "place_details",
 			"totals":  cacheTotals,
