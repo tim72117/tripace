@@ -153,7 +153,7 @@ function connect() {
   es.onerror = () => setStatus('連線中斷,重試中…', 'off')
   es.onmessage = async (ev) => {
     const m = JSON.parse(ev.data)
-    if (m.type === 'ping') return
+    if (m.type === 'ping' || m.type === 'image') return
     if (m.type === 'remove') { await refreshList(); if (m.name === selected && selected) load(selected, { keepView: true }); return }
     // 有新檔案(或目前沒有選中)時切過去;選中的檔案更新時保留視角重載
     const isNew = !$('file').querySelector(`option[value="${CSS.escape(m.name)}"]`)

@@ -1,0 +1,780 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>遠景 3D 預覽</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0d0b16; overflow: hidden; color: #eee; font: 13px -apple-system, 'PingFang TC', sans-serif; }
+  canvas { display: block; width: 100vw; height: 100vh; cursor: grab; touch-action: none; }
+  canvas.drag { cursor: grabbing; }
+  #hud { position: fixed; left: 12px; top: 10px; padding: 8px 12px; border-radius: 10px; background: rgba(20, 16, 36, .62); backdrop-filter: blur(8px); line-height: 1.7; pointer-events: none; }
+  #hud b { color: #ffc15a; }
+  #bar { position: fixed; right: 12px; top: 10px; display: flex; gap: 8px; }
+  #bar button, #bar a { appearance: none; border: 1px solid rgba(255, 193, 90, .35); background: rgba(20, 16, 36, .62); color: #eee; padding: 6px 12px; border-radius: 999px; font: inherit; cursor: pointer; text-decoration: none; }
+  #bar button:hover, #bar a:hover { background: rgba(255, 255, 255, .15); }
+  #bar button.on { background: #ffc15a; color: #2a1a00; }
+  #tbar { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; gap: 8px; align-items: center; padding: 6px 10px; border-radius: 999px; background: rgba(20, 16, 36, .62); backdrop-filter: blur(8px); }
+  #tbar button { appearance: none; border: 1px solid rgba(255, 193, 90, .35); background: transparent; color: #eee; padding: 5px 12px; border-radius: 999px; font: inherit; cursor: pointer; }
+  #tbar button.on { background: #ffc15a; color: #2a1a00; }
+  #tbar input { width: 160px; accent-color: #ffc15a; }
+  #msg[hidden] { display: none; }
+  #msg { position: fixed; inset: 0; display: grid; place-items: center; pointer-events: none; font-size: 15px; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">
+  <b>拖曳</b>環顧 · <b>W A S D</b>在島上走(Shift 跑)· <b>滾輪</b>調視野 · <b>G</b>廣角<br>
+  模式:<b>步行</b>(島上)/ <b>繞島</b>(距離限制同九份)/ <b>自由</b>(飛行)· <b>I</b>顯示/隱藏島<br>
+  <span id="info"></span>
+</div>
+<div id="bar">
+  <button id="bloom" class="on" title="B">輝光</button>
+  <button id="island" class="on" title="I">島</button>
+  <button id="m-walk" class="on" title="島上步行">步行</button>
+  <button id="m-orbit" title="繞島">繞島</button>
+  <button id="m-free" title="F 自由飛行">自由</button>
+  <button id="wide" title="G">廣角</button>
+  <button id="reset" title="R">重設視角</button>
+  <a href="/vista">靜態圖</a>
+  <a href="/">模型預覽</a>
+</div>
+<div id="tbar">
+  <button data-t="0">日間</button>
+  <button data-t="0.5">黃昏</button>
+  <button data-t="1">夜</button>
+  <input id="tod" type="range" min="0" max="1" step="0.01" value="0.5" aria-label="時段">
+</div>
+<div id="msg">載入遠景資料…</div>
+<script type="importmap">
+{ "imports": { "three": "/vendor/three/build/three.module.js", "three/addons/": "/vendor/three/examples/jsm/" } }
+</script>
+<script type="module">
+import * as THREE from 'three'
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js'
+import { Pass, FullScreenQuad } from 'three/addons/postprocessing/Pass.js'
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js'
+
+// 資料由 tools/blender/jiufen_vista.py 匯出(Blender:x 右、y 前、z 上 → three:x、z、-y)
+const canvas = document.getElementById('c')
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' })
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
+renderer.toneMapping = THREE.AgXToneMapping
+renderer.toneMappingExposure = 1.0
+const scene = new THREE.Scene()
+const camera = new THREE.PerspectiveCamera(50, 1, 5, 80000)
+const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 }))
+// 圓柱投影:一般(直線)透視在廣角時,畫面邊緣的物體會被橫向拉長。
+// 做法:先用較寬的直線透視渲染到內部畫面,再依「經度 → 水平位置、緯度的正切 → 垂直位置」重新取樣,
+// 垂直線維持垂直、水平線(地平線)維持水平,邊緣不被拉伸;視野小時與一般透視幾乎相同。
+class CylinderPass extends Pass {
+  constructor(scene, camera) {
+    super()
+    this.scene = scene; this.camera = camera; this.needsSwap = false
+    this.rt = new THREE.WebGLRenderTarget(2, 2, { type: THREE.HalfFloatType, samples: 4 })
+    this.mat = new THREE.ShaderMaterial({
+      uniforms: { tSrc: { value: null }, uLam: { value: 0.5 }, uAsp: { value: 0.5 }, uTX: { value: 1 }, uTY: { value: 1 } },
+      vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = vec4(position.xy, 0., 1.); }',
+      fragmentShader: `uniform sampler2D tSrc; uniform float uLam, uAsp, uTX, uTY; varying vec2 vUv;
+        void main() {
+          vec2 n = vUv * 2. - 1.;
+          float lam = n.x * uLam;
+          float Y = n.y * uAsp * uLam;
+          vec3 d = vec3(sin(lam), Y, cos(lam));
+          vec2 uv = vec2(d.x / d.z / uTX, d.y / d.z / uTY) * .5 + .5;
+          gl_FragColor = texture2D(tSrc, clamp(uv, 0., 1.));
+        }`,
+      depthTest: false, depthWrite: false,
+    })
+    this.quad = new FullScreenQuad(this.mat)
+  }
+  setup(w, h, lam, asp, tx, ty) {
+    if (this.rt.width !== w || this.rt.height !== h) this.rt.setSize(w, h)
+    const u = this.mat.uniforms
+    u.uLam.value = lam; u.uAsp.value = asp; u.uTX.value = tx; u.uTY.value = ty
+  }
+  render(renderer, writeBuffer, readBuffer) {
+    renderer.setRenderTarget(this.rt)
+    renderer.clear()
+    renderer.render(this.scene, this.camera)
+    this.mat.uniforms.tSrc.value = this.rt.texture
+    renderer.setRenderTarget(this.renderToScreen ? null : readBuffer)
+    this.quad.render(renderer)
+  }
+  dispose() { this.rt.dispose(); this.mat.dispose(); this.quad.dispose() }
+}
+const cyl = new CylinderPass(scene, camera)
+composer.addPass(cyl)
+const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.55, 0.35, 1.0)
+composer.addPass(bloom)
+composer.addPass(new OutputPass())
+
+const V3 = (a = [0, 0, 0]) => ({ value: new THREE.Vector3(...a) })
+const hemi = new THREE.HemisphereLight(0xffffff, 0x222222, 1)
+const sunLight = new THREE.DirectionalLight(0xffffff, 1)
+scene.add(hemi, sunLight)
+scene.fog = new THREE.FogExp2(0x888899, 0.00038)   // 只作用在陸地(標準材質);遠景自己的著色器有各自的霧色
+const uniforms = {
+  uTime: { value: 0 }, uProj: { value: 1000 },
+  uS0: V3(), uS1: V3(), uS2: V3(),             // 天空三段色(地平線 / 中段 / 天頂)
+  uSeaBase: V3(), uSeaF: { value: 0.5 },       // 海面底色與反射強度
+  uSunDir: V3([0.34, 0.2, -0.92]), uSunK: { value: 0 },
+  uLight: { value: 1 },                        // 燈光亮度倍率(日間為 0)
+  uFogCol: V3([0.75, 0.375, 0.21]), uFogA: { value: 1 },
+  uCloudLit: V3(), uCloudShade: V3(), uCloudK: { value: 0.6 },   // 雲:受光色 / 背光色 / 覆蓋量
+  uLandTex: { value: null },
+  uShallow: V3(), uFoamCol: V3([1, 1, 1]), uFoamK: { value: 1 },       // 島周圍的淺水色與浪花
+  uMistCol: V3(), uMistA: { value: 0.5 },                         // 兩側與背後山腳的薄霧
+}
+uniforms.uSunDir.value.normalize()
+const SKY_GLSL = `
+uniform vec3 uS0, uS1, uS2;
+vec3 skyCol(float t) {
+  t = clamp(t, 0., 1.);
+  return t < .28 ? mix(uS0, uS1, t / .28) : mix(uS1, uS2, (t - .28) / .72);
+}`
+const NOISE_GLSL = `
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float vnoise(vec2 p) {
+  vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f);
+  return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y);
+}
+float fbm(vec2 p) { float s = 0., a = .5; for (int i = 0; i < 5; i++) { s += a * vnoise(p); p *= 2.03; a *= .5; } return s; }`
+
+// 霧薄片的片段著色器(暖霧與山腳薄霧共用,差別只在 uFogCol / uFogA / uK)
+const FOG_FRAG = NOISE_GLSL + `
+          uniform float uTime, uK, uSeed, uFogA; uniform vec3 uFogCol; varying vec3 vW; varying vec2 vU;
+          void main() {
+            float spd = .03 + .03 * fract(uSeed * .37);
+            vec2 p = vec2(vW.x * .019 + uTime * spd + uSeed, vW.y * .048 + uTime * .008 + uSeed * 2.);
+            p += (vec2(fbm(p * 1.6 + uTime * .02), fbm(p * 1.6 + 5. - uTime * .02)) - .5) * .9;   // 域扭曲:霧團會翻捲、不是平移
+            float n = fbm(p);
+            float dens = smoothstep(.42, .72, n) * pow(1. - vU.y, 1.6);
+            float e = abs(vU.x - .5) * 2.;
+            dens *= smoothstep(1., .55, e);
+            float a = clamp(dens * .42 * uK * uFogA, 0., .9);
+            gl_FragColor = vec4(uFogCol, a);
+          }`
+
+const HALO = { warm: [[1, .62, .22], 5], warm2: [[1, .82, .5], 5], pink: [[1, .25, .3], 6], white: [[.75, .9, 1], 7] }
+const CORE = { warm: [1, .82, .5], warm2: [1, .82, .5], pink: [1, .5, .5], white: [.9, .97, 1] }
+const CORE_STRENGTH = { warm: 55, warm2: 55, pink: 45, white: 80 }
+const STREAK = { warm: [[1, .62, .22], 3], pink: [[1, .25, .3], 4], white: [[.75, .9, 1], 5] }
+
+// ---- 中間的空島 ----
+const shoreR = (th) => 66 + 4 * Math.sin(3 * th + 1) + 2.8 * Math.sin(7 * th + 2)   // 海岸線半徑(與海面著色器中的 shoreR 相同)
+const hash2 = (x, y) => { const s = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return s - Math.floor(s) }
+const vnoise = (x, y) => { const ix = Math.floor(x), iy = Math.floor(y), fx = x - ix, fy = y - iy; const u = fx * fx * (3 - 2 * fx), w = fy * fy * (3 - 2 * fy); const a = hash2(ix, iy), b = hash2(ix + 1, iy), c = hash2(ix, iy + 1), d = hash2(ix + 1, iy + 1); return a + (b - a) * u + (c - a) * w + (a - b - c + d) * u * w }
+const fbm2 = (x, y) => vnoise(x, y) * .5 + vnoise(x * 2.03, y * 2.03) * .25 + vnoise(x * 4.1, y * 4.1) * .125
+function islandHeight(x, z) {
+  const r = Math.hypot(x, z), th = Math.atan2(z, x), R = shoreR(th), t = r / R
+  if (t >= 1) return -Math.min((t - 1) * R * 0.08, 14)
+  const base = 24 * Math.pow(1 - t * t, 1.1)
+  const bump = (fbm2(x * .045 + 7, z * .045 + 3) - .45) * 10 * (1 - t) * Math.min(1, t * 4 + .2)
+  return Math.max(0, base + bump)
+}
+// 陸地 = 島(圓丘) ∪ 後方的本島山脈(往內陸逐漸隆起成山)。前方(北)是海,島是伸進海裡的岬角。
+const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t) }
+const coastZ = (x) => 34 + 14 * Math.sin(x * 0.012 + 0.7) + 8 * Math.sin(x * 0.031 + 2)   // 本島海岸線(島後方在其南側相接)
+function landHeight(x, z) {
+  const hi = islandHeight(x, z)
+  const d = z - coastZ(x)   // 離海岸往內陸的距離(負 = 海)
+  let hm
+  if (d <= 0) hm = -Math.min(-d * 0.08, 14)
+  else {
+    const terrace = 10 * (1 - Math.exp(-d / 60))                                        // 海岸邊的緩坡台地
+    const wall = 280 * sstep(25, 750, d)                                                // 近處陡升的山壁(平均坡度約 20°)
+    const spur = (1 - Math.abs(2 * fbm2(x * 0.006 + 3, z * 0.006 + 9) - 1)) * 70 * sstep(80, 500, d)   // 山稜與山谷(ridged 雜訊)
+    const n = (fbm2(x * 0.02 + 3, z * 0.02 + 9) - 0.45) * 24 * sstep(0, 120, d)         // 坡面的起伏
+    const far = (fbm2(x * 0.0035 + 1, z * 0.0035 + 4) - 0.45) * 60 * sstep(700, 2000, d)  // 更遠處的大尺度起伏
+    hm = Math.max(0.2, terrace + wall + spur + n + far)
+  }
+  return Math.max(hi, hm)
+}
+// 海面著色器要知道海岸在哪(淺水、浪花):把陸地高度烘成一張半精度的小貼圖(±700 m)
+const LAND_TEX_HALF = 700
+function makeLandTex() {
+  const N = 512, data = new Uint16Array(N * N)
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const x = -LAND_TEX_HALF + (2 * LAND_TEX_HALF * (i + 0.5)) / N, z = -LAND_TEX_HALF + (2 * LAND_TEX_HALF * (j + 0.5)) / N
+    data[j * N + i] = THREE.DataUtils.toHalfFloat(landHeight(x, z))
+  }
+  const t = new THREE.DataTexture(data, N, N, THREE.RedFormat, THREE.HalfFloatType)
+  t.minFilter = t.magFilter = THREE.LinearFilter
+  t.needsUpdate = true
+  return t
+}
+function makeIsland() {
+  // 不等間距的格線:中心(島)約 2 m 一格,往外逐漸變稀,最遠 3000 m(單一網格,沒有 LOD 接縫)
+  const N = 480, FAR = 3000
+  const axis = []
+  for (let i = 0; i <= N; i++) { const u = (2 * i) / N - 1; axis.push(FAR * Math.sign(u) * Math.pow(Math.abs(u), 2.5)) }
+  const pos = new Float32Array((N + 1) * (N + 1) * 3), hs = new Float32Array((N + 1) * (N + 1))
+  for (let j = 0; j <= N; j++) for (let i = 0; i <= N; i++) {
+    const k = j * (N + 1) + i, x = axis[i], z = axis[j], h = landHeight(x, z)
+    pos[k * 3] = x; pos[k * 3 + 1] = h; pos[k * 3 + 2] = z; hs[k] = h
+  }
+  const idx = new Uint32Array(N * N * 6)
+  let q = 0
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) { const a = j * (N + 1) + i, b = a + 1, c = a + N + 1, d = c + 1; idx.set([a, c, b, b, c, d], q); q += 6 }
+  const g = new THREE.BufferGeometry()
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+  g.setIndex(new THREE.BufferAttribute(idx, 1))
+  g.computeVertexNormals()
+  const nrm = g.attributes.normal, col = new Float32Array(hs.length * 3)
+  for (let k = 0; k < hs.length; k++) {
+    const h = hs[k], ny = nrm.getY(k), x = pos[k * 3], z = pos[k * 3 + 2], n = fbm2(x * .08, z * .08), far = fbm2(x * .004, z * .004)
+    let c
+    if (h < 2.2) c = [.42 + n * .1, .37 + n * .08, .25 + n * .05]                                   // 沙灘
+    else if (ny < .5) c = [.2 + n * .08 + far * .05, .185 + n * .07 + far * .05, .17 + n * .06 + far * .04]   // 很陡處:岩壁
+    else c = [.02 + n * .02, .08 + n * .05 - far * .015, .02 + n * .02]                            // 森林(頂點色是平均色;樹冠明暗在片段著色器裡疊上)
+    col.set(c, k * 3)
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3))
+  const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: .95, metalness: 0 })
+  // 樹冠:在片段著色器依世界座標疊三層雜訊(約 5 m 一團的樹冠、更細的葉叢、大片的疏密),只作用在綠色區域;
+  // 遠處淡出成平均色,避免遠看閃爍(網格間距在山坡上是 8–15 m,細節必須靠貼圖而不是頂點)。
+  mat.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nvarying vec3 vWP; varying vec3 vWN;').replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\n  vWN = normalize(mat3(modelMatrix) * objectNormal);').replace('#include <begin_vertex>', '#include <begin_vertex>\n  vWP = (modelMatrix * vec4(position, 1.)).xyz;')
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', `#include <common>
+        varying vec3 vWP; varying vec3 vWN;
+        float cH(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+        float cN(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f); return mix(mix(cH(i), cH(i + vec2(1, 0)), f.x), mix(cH(i + vec2(0, 1)), cH(i + vec2(1, 1)), f.x), f.y); }
+        float cF(vec2 p) { return cN(p) * .55 + cN(p * 2.1) * .3 + cN(p * 4.3) * .15; }`)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        {
+          float forest = smoothstep(1.2, 1.9, vColor.g / max(vColor.r, .001));
+          float dist = length(cameraPosition - vWP);
+          float near = 1. - smoothstep(120., 1100., dist);
+          // 三向投影:陡坡上只用世界 xz 會被沿坡拉長成條紋,依法線在三個平面間混合
+          vec3 wn = pow(abs(normalize(vWN)), vec3(4.)); wn /= (wn.x + wn.y + wn.z);
+          float canopy = cF(vWP.zy * .2) * wn.x + cF(vWP.xz * .2) * wn.y + cF(vWP.xy * .2) * wn.z;
+          float leaf = cN(vWP.zy * .8 + 7.) * wn.x + cN(vWP.xz * .8 + 7.) * wn.y + cN(vWP.xy * .8 + 7.) * wn.z;
+          float clump = cF(vWP.xz * .018 + 3.);
+          float shade = mix(.3, 1.7, smoothstep(.28, .72, canopy)) * mix(.75, 1.25, leaf) * mix(.8, 1.2, clump);
+          diffuseColor.rgb *= mix(1., shade, forest * near);
+        }`)
+  }
+  const m = new THREE.Mesh(g, mat)
+  m.frustumCulled = false
+  return m
+}
+let islandMesh = null
+let farGroup = null
+let group = null
+const ridgeMats = []
+let isletMat = null
+window.__vista = { scene, camera }
+const P = (x, y, z) => [x, z, -y]
+const C40 = (40 * Math.PI) / 180
+const invG = (g) => { const a = Math.abs(g); const th = a <= Math.tan(C40) ? Math.atan(a) : C40 + (a - Math.tan(C40)) * Math.cos(C40) ** 2; return Math.sign(g) * th }
+// 平面座標(x 右、y 前)→ 弧面(以相機為圓心、半徑 = y):回傳 [X, Z, θ],讓 180° 範圍內每個方向距離一致
+const arcOf = (x, y) => { const th = invG(x / y); return [y * Math.sin(th), -y * Math.cos(th), th] }
+
+function strip(xs, ys, zs, bottom) {
+  const pos = [], idx = []
+  xs.forEach((x, i) => { pos.push(...P(x, ys, zs[i])); pos.push(...P(x, ys, bottom)) })
+  for (let i = 0; i < xs.length - 1; i++) { const a = i * 2, b = a + 1, c = a + 2, d = a + 3; idx.push(a, b, c, b, d, c) }
+  const g = new THREE.BufferGeometry()
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+  g.setIndex(idx)
+  return g
+}
+
+function arcStrip(radius, hs, bottom, spanRad) {
+  const pos = [], idx = []
+  const n = hs.length
+  hs.forEach((h, i) => {
+    const th = -spanRad + (2 * spanRad * i) / (n - 1)
+    const x = radius * Math.sin(th), z = -radius * Math.cos(th)
+    pos.push(x, h, z, x, bottom, z)
+  })
+  for (let i = 0; i < n - 1; i++) { const a = i * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2) }
+  const g = new THREE.BufferGeometry()
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+  g.setIndex(idx)
+  return g
+}
+
+function build(d) {
+  ridgeMats.length = 0
+  if (group) { scene.remove(group); group.traverse((o) => { o.geometry?.dispose(); o.material?.dispose() }) }
+  group = new THREE.Group()
+  scene.add(group)
+  farGroup = new THREE.Group()
+  group.add(farGroup)
+
+  // 天空
+  const sky = new THREE.Mesh(new THREE.SphereGeometry(40000, 32, 16), new THREE.ShaderMaterial({
+    uniforms, side: THREE.BackSide, depthWrite: false, depthTest: false,
+    vertexShader: 'varying vec3 vD; void main(){ vD = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.); }',
+    fragmentShader: SKY_GLSL + NOISE_GLSL + `uniform vec3 uSunDir, uCloudLit, uCloudShade; uniform float uSunK, uTime, uCloudK; varying vec3 vD;
+      void main() {
+        vec3 d = normalize(vD);
+        vec3 c = skyCol(d.y / .55);
+        // 雲:把視線投影到高空平面,兩層以不同速度與方向飄動,用相鄰取樣差當作簡易受光
+        if (d.y > .01) {
+          vec2 p = d.xz / (d.y + .18) * 1.5;
+          vec2 w1 = vec2(uTime * .012, uTime * .004), w2 = vec2(-uTime * .006, uTime * .009);
+          float n1 = fbm(p * 1.1 + w1), n1b = fbm(p * 1.1 + w1 + vec2(.05, .03));
+          float n2 = fbm(p * 2.3 + w2 + 9.), n2b = fbm(p * 2.3 + w2 + 9. + vec2(.05, .03));
+          float n = n1 * .65 + n2 * .35, nb = n1b * .65 + n2b * .35;
+          float dens = smoothstep(.46, .74, n) * smoothstep(.01, .22, d.y);   // 靠近地平線淡出成霧
+          float lit = clamp(.55 + (n - nb) * 9., 0., 1.);
+          vec3 cc = mix(uCloudShade, uCloudLit, lit);
+          c = mix(c, cc, clamp(dens * uCloudK, 0., 1.));
+        }
+        float s = max(dot(d, uSunDir), 0.);
+        c += vec3(1., .88, .65) * (pow(s, 900.) * 40. + pow(s, 40.) * .18) * uSunK;
+        gl_FragColor = vec4(c, 1.);
+      }`,
+  }))
+  sky.renderOrder = -10
+  sky.onBeforeRender = (r, s, cam) => sky.position.copy(cam.position)
+  sky.frustumCulled = false
+  group.add(sky)
+
+  // 海面:菲涅耳反射天空,沿視線方向拉長的細條紋擾動
+  const sea = new THREE.Mesh(new THREE.PlaneGeometry(120000, 120000), new THREE.ShaderMaterial({
+    uniforms,
+    vertexShader: 'varying vec3 vW; void main(){ vec4 w = modelMatrix * vec4(position,1.); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
+    fragmentShader: SKY_GLSL + NOISE_GLSL + `
+      uniform float uTime, uSeaF, uSunK, uFoamK; uniform vec3 uSeaBase, uSunDir, uShallow, uFoamCol; varying vec3 vW;
+      uniform sampler2D uLandTex;
+      void main() {
+        vec3 V = normalize(cameraPosition - vW);
+        float dist = length(cameraPosition - vW);
+        float calm = 1. - smoothstep(150., 1800., dist);   // 遠處不做擾動,避免閃爍(混疊)
+        // 紋路沿橫向拉長(像真實的海浪橫紋)並緩慢朝觀看者移動;沿深度拉長會在透視下變成放射狀的「曲速」線條
+        vec2 q = vec2(vW.x * .03, vW.z * .075 + uTime * .12);
+        vec3 N = normalize(vec3((fbm(q) - .5) * .18 * calm, 1., (fbm(q + 7.3) - .5) * .18 * calm));
+        float f = .02 + .98 * pow(1. - max(dot(N, V), 0.), 5.);
+        vec3 R = reflect(-V, N);
+        vec3 col = mix(uSeaBase, skyCol(abs(R.y) / .55), clamp(f * uSeaF, 0., 1.));
+        float sp = max(dot(R, uSunDir), 0.);
+        col += vec3(1., .88, .65) * (pow(sp, 300.) * 10. + pow(sp, 60.) * .1) * uSunK;
+        // 島周圍:淺水漸層 + 隨時間向岸推進的浪花
+        vec2 luv = (vW.xz + 700.) / 1400.;
+        float hh = (luv.x < 0. || luv.x > 1. || luv.y < 0. || luv.y > 1.) ? -20. : texture2D(uLandTex, luv).r;
+        float dd = hh > .05 ? -5. : -hh * 12.5;   // 離岸距離的代理(離岸坡度約 0.08)
+        float shallow = smoothstep(40., 0., dd) * step(-1., dd);
+        col = mix(col, uShallow, shallow * .85);
+        float w = sin(dd * .42 - uTime * 1.1 + fbm(vW.xz * .05) * 6.) * .5 + .5;
+        float foam = smoothstep(12., 1., dd) * smoothstep(.45, .95, w) * .75 + smoothstep(3., 0., dd) * .85;
+        col = mix(col, uFoamCol, clamp(foam, 0., 1.) * uFoamK * step(-1., dd));
+        gl_FragColor = vec4(col, 1.);
+      }`,
+  }))
+  sea.rotation.x = -Math.PI / 2
+  sea.position.z = -20000
+  group.add(sea)
+
+  // 山脊(剖面帷幕):山腳淡成霧色、山頂為暗色
+  for (const r of d.ridges) {
+    if (r.y < 2500 && r.name.startsWith('r')) continue   // 近處的山脊由本島陸地取代(灣內的半島 c1/c2 仍保留)
+    const m = new THREE.ShaderMaterial({
+      uniforms: { uTop: { value: new THREE.Vector3(...r.top) }, uHaze: { value: new THREE.Vector3(...r.haze) }, uFade: { value: r.fadeH } },
+      side: THREE.DoubleSide,
+      vertexShader: 'varying float vY; void main(){ vY = position.y; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.); }',
+      fragmentShader: 'uniform vec3 uTop, uHaze; uniform float uFade; varying float vY; void main(){ gl_FragColor = vec4(mix(uHaze, uTop, clamp(vY / uFade, 0., 1.)), 1.); }',
+    })
+    ridgeMats.push({ r, m })
+    const mesh = new THREE.Mesh(arcStrip(r.y, r.arc, -40, ((d.arcDeg ?? 90) * Math.PI) / 180), m)
+    mesh.frustumCulled = false
+    ;(r.y >= 2500 ? farGroup : group).add(mesh)   // 遠山跟著鏡頭(無視差);近處的山留在世界座標
+  }
+
+  // 基隆嶼
+  if (d.islet) {
+    const i = d.islet
+    const pos = [], idx = []
+    i.heights.forEach((h, k) => {
+      const [X, Z] = arcOf(i.x0 + ((i.x1 - i.x0) * k) / (i.heights.length - 1), i.y)
+      pos.push(X, h, Z, X, -1, Z)
+    })
+    for (let k = 0; k < i.heights.length - 1; k++) { const a = k * 2; idx.push(a, a + 1, a + 2, a + 1, a + 3, a + 2) }
+    const ig = new THREE.BufferGeometry()
+    ig.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+    ig.setIndex(idx)
+    isletMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(), side: THREE.DoubleSide })
+    const mesh = new THREE.Mesh(ig, isletMat)
+    mesh.frustumCulled = false
+    group.add(mesh)
+  }
+
+  // 近景山坡
+  if (d.ground) {
+    const g = d.ground, pos = [], idx = []
+    for (let j = 0; j <= g.ny; j++) for (let i = 0; i <= g.nx; i++) {
+      pos.push(...P(g.x0 + ((g.x1 - g.x0) * i) / g.nx, g.y0 + ((g.y1 - g.y0) * j) / g.ny, g.heights[j][i]))
+    }
+    for (let j = 0; j < g.ny; j++) for (let i = 0; i < g.nx; i++) {
+      const a = j * (g.nx + 1) + i, b = a + 1, c = a + g.nx + 1, e = c + 1
+      idx.push(a, b, e, a, e, c)
+    }
+    const geo = new THREE.BufferGeometry()
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+    geo.setIndex(idx)
+    const mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: new THREE.Color().setRGB(.004, .006, .014, THREE.LinearSRGBColorSpace), side: THREE.DoubleSide }))
+    mesh.frustumCulled = false
+    group.add(mesh)
+  }
+
+  // 谷地/海灣暖霧:幾片直立的雜訊薄片,依深度由遠到近疊(一般 alpha 混合,近似體積霧)
+  let order = 0
+  for (const [cx, cy, w, dep, h, k] of d.fog) {
+    const n = 7
+    for (let s = 0; s < n; s++) {
+      const y = cy - dep / 2 + (dep * (s + .5)) / n
+      const m = new THREE.ShaderMaterial({
+        uniforms: { ...uniforms, uK: { value: k }, uSeed: { value: s * 3.7 + cx * .01 } },
+        transparent: true, depthWrite: false,
+        vertexShader: 'varying vec3 vW; varying vec2 vU; void main(){ vU = uv; vec4 w = modelMatrix * vec4(position,1.); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
+        fragmentShader: FOG_FRAG,
+      })
+      const q = new THREE.Mesh(new THREE.PlaneGeometry(w, h), m)
+      const [fx, fz, fth] = arcOf(cx, y)
+      q.position.set(fx, h / 2, fz)
+      q.rotation.y = -fth
+      q.renderOrder = 100 + order++
+      q.frustumCulled = false
+      group.add(q)
+    }
+  }
+
+  // 兩側與背後的山腳薄霧(前方留給灣內暖霧):貼海面、往上淡出,隨時段變色
+  {
+    let seed = 1
+    for (const R of [1100, 2200, 3600]) {
+      for (let a = -170; a <= 170; a += 26) {
+        if (Math.abs(a) < 55) continue
+        const th = (a * Math.PI) / 180
+        const m = new THREE.ShaderMaterial({
+          uniforms: { ...uniforms, uK: { value: 1.1 }, uSeed: { value: seed++ * 2.9 }, uFogCol: uniforms.uMistCol, uFogA: uniforms.uMistA },
+          transparent: true, depthWrite: false,
+          vertexShader: 'varying vec3 vW; varying vec2 vU; void main(){ vU = uv; vec4 w = modelMatrix * vec4(position,1.); vW = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }',
+          fragmentShader: FOG_FRAG,
+        })
+        const q = new THREE.Mesh(new THREE.PlaneGeometry(R * 0.7, 80 + (R / 3600) * 90), m)
+        q.position.set(R * Math.sin(th), q.geometry.parameters.height / 2, -R * Math.cos(th))
+        q.rotation.y = -th
+        q.renderOrder = 60 + Math.round(5 - R / 800)
+        q.frustumCulled = false
+        group.add(q)
+      }
+    }
+  }
+
+  // 水面倒影條
+  {
+    const pos = [], uv = [], col = [], idx = []
+    d.streaks.forEach(([x, y, w, h, key], i) => {
+      const [c, s] = STREAK[key] ?? STREAK.warm
+      const z0 = P(x, y - 1, 0)
+      pos.push(z0[0] - w / 2, z0[1] - h, z0[2], z0[0] + w / 2, z0[1] - h, z0[2], z0[0] + w / 2, z0[1], z0[2], z0[0] - w / 2, z0[1], z0[2])
+      uv.push(0, 0, 1, 0, 1, 1, 0, 1)
+      for (let k = 0; k < 4; k++) col.push(c[0] * s, c[1] * s, c[2] * s)
+      const b = i * 4
+      idx.push(b, b + 1, b + 2, b, b + 2, b + 3)
+    })
+    const g = new THREE.BufferGeometry()
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2))
+    g.setAttribute('aCol', new THREE.Float32BufferAttribute(col, 3))
+    g.setIndex(idx)
+    const m = new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+      vertexShader: 'attribute vec3 aCol; varying vec3 vC; varying vec2 vU; void main(){ vC = aCol; vU = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.); }',
+      fragmentShader: 'varying vec3 vC; varying vec2 vU; void main(){ float f = pow(vU.y, 1.8) * (1. - 2. * abs(vU.x - .5)); gl_FragColor = vec4(vC * f * f, 1.); }',
+    })
+    const mesh = new THREE.Mesh(g, m)
+    mesh.frustumCulled = false
+    mesh.renderOrder = 200
+    group.add(mesh)
+  }
+
+  // 光點:一個 Points 同時畫光暈與光核(尺寸以公尺計,隨距離縮放)
+  {
+    const L = d.lights, pos = new Float32Array(L.length * 3), size = new Float32Array(L.length), kk = new Float32Array(L.length)
+    const hc = new Float32Array(L.length * 3), cc = new Float32Array(L.length * 3), hs = new Float32Array(L.length), cs = new Float32Array(L.length)
+    L.forEach(([x, y, z, sz, k, key], i) => {
+      const [ax, az] = arcOf(x, y)
+      pos.set([ax, z, az], i * 3)
+      size[i] = sz * k
+      kk[i] = k
+      const [c, s] = HALO[key] ?? HALO.warm
+      hc.set(c, i * 3); hs[i] = s
+      cc.set(CORE[key] ?? CORE.warm, i * 3); cs[i] = CORE_STRENGTH[key] ?? 55
+    })
+    const g = new THREE.BufferGeometry()
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3))
+    g.setAttribute('aSize', new THREE.BufferAttribute(size, 1))
+    g.setAttribute('aK', new THREE.BufferAttribute(kk, 1))
+    g.setAttribute('aHC', new THREE.BufferAttribute(hc, 3))
+    g.setAttribute('aCC', new THREE.BufferAttribute(cc, 3))
+    g.setAttribute('aHS', new THREE.BufferAttribute(hs, 1))
+    g.setAttribute('aCS', new THREE.BufferAttribute(cs, 1))
+    const m = new THREE.ShaderMaterial({
+      uniforms, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+      vertexShader: `
+        uniform float uProj; attribute float aSize, aK, aHS, aCS; attribute vec3 aHC, aCC;
+        varying float vK, vI, vHS, vCS; varying vec3 vHC, vCC;
+        void main() {
+          vec4 mv = modelViewMatrix * vec4(position, 1.);
+          gl_Position = projectionMatrix * mv;
+          gl_Position.z -= gl_Position.w * 3e-5;
+          float px = aSize * uProj / max(-mv.z, 1.);
+          float pxc = max(px, 3.);
+          vI = min(1., (px * px) / 9.);   // 小於 3 px 時按面積縮減亮度(能量守恆),避免遠處光點變粗
+          gl_PointSize = pxc;
+          vK = aK; vHS = aHS; vCS = aCS; vHC = aHC; vCC = aCC;
+        }`,
+      fragmentShader: `
+        uniform float uLight; varying float vK, vI, vHS, vCS; varying vec3 vHC, vCC;
+        void main() {
+          vec2 c = gl_PointCoord * 2. - 1.;
+          float r = length(c);
+          if (r > 1.) discard;
+          float edge = 1. - smoothstep(.85, 1., r);
+          float f = pow(max(1. - r, 0.), 4.4) * edge;   // 與 Blender 的 QUADRATIC_SPHERE 加 2.2 次方一致
+          float rc = r * vK;
+          float fc = rc < 1. ? pow(1. - rc, 4.4) : 0.;
+          vec3 col = vHC * vHS * f * f + vCC * vCS * fc * fc;
+          gl_FragColor = vec4(col * vI * uLight, 1.);
+        }`,
+    })
+    const pts = new THREE.Points(g, m)
+    pts.frustumCulled = false
+    pts.renderOrder = 300
+    group.add(pts)
+    document.getElementById('info').textContent = `${d.ridges.length} 層山脊 · ${L.length} 個光點 · ${d.streaks.length} 條倒影`
+  }
+  if (!islandMesh) { uniforms.uLandTex.value = makeLandTex(); islandMesh = makeIsland(); scene.add(islandMesh) }
+  EYE = d.eyeZ ?? 70
+  applyTod(tod)
+}
+
+// ---- 時段:日間 → 黃昏 → 夜,中間線性內插(0 日間、0.5 黃昏、1 夜)----
+const TOD = {
+  day:   { s0: [.56, .70, .86], s1: [.20, .40, .80], s2: [.04, .16, .62], sea: [.012, .075, .15], seaF: .8, sun: 1, light: 0, fog: [.88, .92, 1], fogA: .32, bloom: .05, expo: 1.0, islet: [.03, .05, .05], cLit: [.95, .96, 1], cShade: [.45, .52, .66], cK: .85, mist: [.85, .9, .98], mistA: .55,
+    lightCol: [1, .95, .85], lightK: 1.7, lightDir: [.45, .38, -.8], hemiSky: [.55, .7, .95], hemiGnd: [.25, .28, .2], hemiK: .6, shallow: [.06, .36, .42], foam: [1, 1, 1], foamK: 1 },
+  dusk:  { s0: [.34, .20, .34], s1: [.12, .10, .26], s2: [.012, .022, .085], sea: [.004, .010, .032], seaF: .5, sun: 0, light: 1, fog: [.75, .375, .21], fogA: 1, bloom: .55, expo: 1.0, islet: [.012, .018, .04], cLit: [.62, .36, .44], cShade: [.10, .09, .22], cK: .7, mist: [.34, .27, .46], mistA: .5,
+    lightCol: [1, .55, .35], lightK: 1.1, lightDir: [.45, .18, -.85], hemiSky: [.28, .22, .42], hemiGnd: [.08, .06, .1], hemiK: .8, shallow: [.05, .12, .22], foam: [.8, .6, .7], foamK: .6 },
+  night: { s0: [.035, .045, .11], s1: [.012, .02, .06], s2: [.003, .006, .02], sea: [.002, .005, .018], seaF: .4, sun: 0, light: 1.15, fog: [.75, .375, .21], fogA: 1, bloom: .6, expo: 1.0, islet: [.004, .006, .014], cLit: [.06, .07, .15], cShade: [.012, .015, .04], cK: .6, mist: [.06, .07, .14], mistA: .4,
+    lightCol: [.35, .45, .9], lightK: .45, lightDir: [-.35, .55, .6], hemiSky: [.05, .07, .16], hemiGnd: [.02, .02, .04], hemiK: .8, shallow: [.01, .03, .07], foam: [.3, .35, .5], foamK: .35 },
+}
+const lerp = (a, b, t) => (Array.isArray(a) ? a.map((v, i) => v + (b[i] - v) * t) : a + (b - a) * t)
+function blend(t) {
+  const [A, B, k] = t < 0.5 ? [TOD.day, TOD.dusk, t * 2] : [TOD.dusk, TOD.night, (t - 0.5) * 2]
+  const o = {}
+  for (const key of Object.keys(A)) o[key] = lerp(A[key], B[key], k)
+  return o
+}
+const mixc = (a, b, t) => a.map((v, i) => v + (b[i] - v) * t)
+// 日間的山脊:近山深綠藍、遠山淡藍灰;夜間把黃昏(Blender 匯出)的顏色壓暗
+function ridgeColors(r, t, p) {
+  const depth = Math.min(1, r.y / 5200)
+  const day = { top: mixc([.03, .055, .05], [.34, .48, .66], Math.pow(depth, .8)), haze: mixc([.2, .32, .4], [.58, .70, .84], Math.pow(depth, .9)) }
+  const dusk = { top: r.top, haze: r.haze }
+  const night = { top: r.top.map((v) => v * .5), haze: r.haze.map((v) => v * .18) }
+  const [A, B, k] = t < 0.5 ? [day, dusk, t * 2] : [dusk, night, (t - 0.5) * 2]
+  return { top: mixc(A.top, B.top, k), haze: mixc(A.haze, B.haze, k) }
+}
+let tod = Number(new URLSearchParams(location.search).get('tod') ?? 0.5)
+function applyTod(t) {
+  tod = Math.max(0, Math.min(1, t))
+  const p = blend(tod)
+  uniforms.uS0.value.set(...p.s0); uniforms.uS1.value.set(...p.s1); uniforms.uS2.value.set(...p.s2)
+  uniforms.uSeaBase.value.set(...p.sea); uniforms.uSeaF.value = p.seaF
+  uniforms.uSunK.value = p.sun; uniforms.uLight.value = p.light
+  uniforms.uFogCol.value.set(...p.fog); uniforms.uFogA.value = p.fogA
+  uniforms.uCloudLit.value.set(...p.cLit); uniforms.uCloudShade.value.set(...p.cShade); uniforms.uCloudK.value = p.cK
+  uniforms.uMistCol.value.set(...p.mist); uniforms.uMistA.value = p.mistA
+  hemi.color.setRGB(...p.hemiSky, THREE.LinearSRGBColorSpace); hemi.groundColor.setRGB(...p.hemiGnd, THREE.LinearSRGBColorSpace); hemi.intensity = p.hemiK * Math.PI
+  sunLight.color.setRGB(...p.lightCol, THREE.LinearSRGBColorSpace); sunLight.intensity = p.lightK * Math.PI
+  sunLight.position.set(...p.lightDir).normalize().multiplyScalar(1000)
+  uniforms.uShallow.value.set(...p.shallow); uniforms.uFoamCol.value.set(...p.foam); uniforms.uFoamK.value = p.foamK
+  scene.fog.color.setRGB(...p.s0, THREE.LinearSRGBColorSpace)
+  bloom.strength = p.bloom; renderer.toneMappingExposure = p.expo
+  for (const { r, m } of ridgeMats) {
+    const c = ridgeColors(r, tod, p)
+    m.uniforms.uTop.value.set(...c.top); m.uniforms.uHaze.value.set(...c.haze)
+  }
+  if (isletMat) isletMat.color.setRGB(...p.islet, THREE.LinearSRGBColorSpace)
+  const slider = document.getElementById('tod'); if (slider) slider.value = String(tod)
+  for (const b of document.querySelectorAll('#tbar button')) b.classList.toggle('on', Math.abs(Number(b.dataset.t) - tod) < 0.02)
+}
+
+// ---- 相機控制(拖曳轉向、WASD 移動、滾輪縮放視野)----
+let EYE = 70
+// 鏡頭預設是「繞島」:與九份(three/cameraRig.ts、three/IslandApp.ts)相同的限制——
+// 島半徑 R = 72.84 m(night-jiufen 的 terrain.json 輪廓最大半徑);最遠 3.6R、最近 0.35R;仰角 0.35–1.38 rad;不能平移;垂直視角 32°。
+// 按「自由」可切回自由飛行(WASD)。
+const JIUFEN_R = 72.84
+const ORBIT = { min: JIUFEN_R * 0.35, max: JIUFEN_R * 3.6, polMin: 0.35, polMax: 1.38, vfov: 32 }
+const orbit = { az: 0.2, pol: 1.2, dist: 215, tx: 0, ty: 4, tz: 0 }   // 預設構圖:九份預設封面是 2.9R(≈211 m),整座島放得進畫面
+// 預設是「站在島上」(步行):眼高 1.7 m、貼著地形走、只能在島的陸地上,視野與九份一致(垂直 32°)。
+const WALK_START = { x: 0, z: -24 }   // 圓丘北坡(朝灣的那一側),往北看是下坡與海
+const EYE_H = 1.7
+const walk = { x: WALK_START.x, z: WALK_START.z, y: 0 }
+const state = { mode: 'walk', wide: false, vfov: ORBIT.vfov, yaw: 0, pitch: -0.04, hfov: 58.7, pos: new THREE.Vector3(0, EYE, 0) }
+const reset = () => {
+  document.getElementById('wide')?.classList.remove('on')
+  state.wide = false
+  Object.assign(orbit, { az: 0.2, pol: 1.2, dist: 215 })
+  walk.x = WALK_START.x; walk.z = WALK_START.z; walk.y = 0; state.vfov = ORBIT.vfov
+  state.yaw = 0; state.pitch = state.mode === 'walk' ? -0.04 : -0.031; state.hfov = 58.7; state.pos.set(0, EYE, 0)
+}
+let dragging = false, lx = 0, ly = 0
+canvas.addEventListener('pointerdown', (e) => { dragging = true; lx = e.clientX; ly = e.clientY; canvas.setPointerCapture(e.pointerId); canvas.classList.add('drag') })
+canvas.addEventListener('pointerup', () => { dragging = false; canvas.classList.remove('drag') })
+canvas.addEventListener('pointermove', (e) => {
+  if (!dragging) return
+  if (state.mode === 'orbit') {
+    orbit.az -= (e.clientX - lx) * 0.005
+    orbit.pol = Math.max(ORBIT.polMin, Math.min(ORBIT.polMax, orbit.pol - (e.clientY - ly) * 0.005))
+  } else {
+    const k = (state.hfov / 58.7) * 0.0035
+    state.yaw -= (e.clientX - lx) * k
+    state.pitch = Math.max(-1.3, Math.min(1.3, state.pitch - (e.clientY - ly) * k))
+  }
+  lx = e.clientX; ly = e.clientY
+})
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault()
+  if (state.mode === 'orbit') orbit.dist = Math.max(ORBIT.min, Math.min(ORBIT.max, orbit.dist * Math.exp(e.deltaY * 0.001)))
+  else if (state.mode === 'walk') state.vfov = Math.max(14, Math.min(60, state.vfov * Math.exp(e.deltaY * 0.001)))
+  else state.hfov = Math.max(12, Math.min(150, state.hfov * Math.exp(e.deltaY * 0.001)))
+}, { passive: false })
+const keys = new Set()
+addEventListener('keydown', (e) => {
+  if (e.key === 'b' || e.key === 'B') toggleBloom()
+  else if (e.key === 'r' || e.key === 'R') reset()
+  else if (e.key === 'g' || e.key === 'G') toggleWide()
+  else if (e.key === 'i' || e.key === 'I') toggleIsland()
+  else if (e.key === 'f' || e.key === 'F') toggleFree()
+  else keys.add(e.key.toLowerCase())
+})
+addEventListener('keyup', (e) => keys.delete(e.key.toLowerCase()))
+let bloomOn = true
+function toggleBloom() { bloomOn = !bloomOn; bloom.enabled = bloomOn; document.getElementById('bloom').classList.toggle('on', bloomOn) }
+document.getElementById('bloom').onclick = toggleBloom
+document.getElementById('reset').onclick = reset
+const islandBtn = document.getElementById('island')
+const toggleIsland = () => { if (islandMesh) { islandMesh.visible = !islandMesh.visible; islandBtn.classList.toggle('on', islandMesh.visible) } }
+islandBtn.onclick = toggleIsland
+const modeBtns = { walk: document.getElementById('m-walk'), orbit: document.getElementById('m-orbit'), free: document.getElementById('m-free') }
+function setMode(m) {
+  if (m === state.mode) return
+  if (m === 'free') {   // 自由飛行:從目前鏡頭的位置與朝向接續
+    const d = camera.getWorldDirection(new THREE.Vector3())
+    state.pos.copy(camera.position); state.yaw = Math.atan2(-d.x, -d.z); state.pitch = Math.asin(d.y)
+    state.hfov = state.wide ? 120 : 58.7
+  } else if (m === 'walk') { walk.x = WALK_START.x; walk.z = WALK_START.z; walk.y = 0; state.yaw = 0; state.pitch = -0.04 }
+  state.mode = m
+  for (const [k, b] of Object.entries(modeBtns)) b.classList.toggle('on', k === m)
+}
+for (const [k, b] of Object.entries(modeBtns)) b.onclick = () => setMode(k)
+const toggleFree = () => setMode(state.mode === 'free' ? 'walk' : 'free')
+const wideBtn = document.getElementById('wide')
+const toggleWide = () => { state.wide = !state.wide; if (state.mode === 'free') state.hfov = state.wide ? 120 : 58.7; wideBtn.classList.toggle('on', state.wide) }
+wideBtn.onclick = toggleWide
+
+function resize() {
+  const w = innerWidth, h = innerHeight
+  renderer.setSize(w, h, false)
+  composer.setSize(w, h)
+}
+addEventListener('resize', resize)
+resize()
+
+window.__vista.state = state
+window.__vista.applyTod = applyTod
+for (const b of document.querySelectorAll('#tbar button')) b.onclick = () => applyTod(Number(b.dataset.t))
+document.getElementById('tod').oninput = (e) => applyTod(Number(e.target.value))
+let last = performance.now()
+function frame(now) {
+  const dt = Math.min(0.1, (now - last) / 1000); last = now
+  uniforms.uTime.value = now / 1000
+  camera.near = state.mode === 'walk' ? 0.4 : 5
+  if (state.mode === 'walk') {
+    const fwd = new THREE.Vector3(-Math.sin(state.yaw), 0, -Math.cos(state.yaw))
+    const right = new THREE.Vector3(Math.cos(state.yaw), 0, -Math.sin(state.yaw))
+    const sp = (keys.has('shift') ? 14 : 6) * dt
+    let mx = 0, mz = 0
+    if (keys.has('w') || keys.has('arrowup')) { mx += fwd.x; mz += fwd.z }
+    if (keys.has('s') || keys.has('arrowdown')) { mx -= fwd.x; mz -= fwd.z }
+    if (keys.has('d') || keys.has('arrowright')) { mx += right.x; mz += right.z }
+    if (keys.has('a') || keys.has('arrowleft')) { mx -= right.x; mz -= right.z }
+    const ok = (x, z) => landHeight(x, z) > 0.6 && Math.hypot(x, z) < ORBIT.max   // 只能走在陸地上,離島中心最遠 262 m(= 九份的最遠距離)
+    if (mx || mz) {
+      const l = Math.hypot(mx, mz), nx = walk.x + (mx / l) * sp, nz = walk.z + (mz / l) * sp
+      if (ok(nx, nz)) { walk.x = nx; walk.z = nz } else if (ok(nx, walk.z)) walk.x = nx; else if (ok(walk.x, nz)) walk.z = nz   // 貼著邊界滑行
+    }
+    const gy = landHeight(walk.x, walk.z) + EYE_H
+    walk.y = walk.y ? walk.y + (gy - walk.y) * Math.min(1, dt * 12) : gy
+    camera.position.set(walk.x, walk.y, walk.z)
+    camera.rotation.set(state.pitch, state.yaw, 0, 'YXZ')
+    const aspect = renderer.domElement.clientWidth / Math.max(1, renderer.domElement.clientHeight)
+    state.hfov = state.wide ? 120 : (2 * Math.atan(Math.tan((state.vfov * Math.PI) / 360) * aspect) * 180) / Math.PI
+  } else if (state.mode === 'orbit') {
+    const s = Math.sin(orbit.pol), c = Math.cos(orbit.pol)
+    camera.position.set(orbit.tx + orbit.dist * s * Math.sin(orbit.az), orbit.ty + orbit.dist * c, orbit.tz + orbit.dist * s * Math.cos(orbit.az))
+    camera.lookAt(orbit.tx, orbit.ty, orbit.tz)
+    const aspect = renderer.domElement.clientWidth / Math.max(1, renderer.domElement.clientHeight)
+    state.hfov = state.wide ? 120 : (2 * Math.atan(Math.tan((ORBIT.vfov * Math.PI) / 360) * aspect) * 180) / Math.PI
+  } else {
+    const fwd = new THREE.Vector3(-Math.sin(state.yaw), 0, -Math.cos(state.yaw))
+    const right = new THREE.Vector3(Math.cos(state.yaw), 0, -Math.sin(state.yaw))
+    const sp = (keys.has('shift') ? 240 : 60) * dt
+    if (keys.has('w') || keys.has('arrowup')) state.pos.addScaledVector(fwd, sp)
+    if (keys.has('s') || keys.has('arrowdown')) state.pos.addScaledVector(fwd, -sp)
+    if (keys.has('d') || keys.has('arrowright')) state.pos.addScaledVector(right, sp)
+    if (keys.has('a') || keys.has('arrowleft')) state.pos.addScaledVector(right, -sp)
+    if (keys.has('e')) state.pos.y += sp
+    if (keys.has('q')) state.pos.y = Math.max(2, state.pos.y - sp)
+    camera.position.copy(state.pos)
+    camera.rotation.set(state.pitch, state.yaw, 0, 'YXZ')
+  }
+  if (farGroup) farGroup.position.set(camera.position.x, 0, camera.position.z)
+  // 圓柱投影的內部直線透視:水平半角正切 T = tan(λ),垂直半角正切取畫面四角所需的最大值
+  const lam = Math.min(1.4, (state.hfov * Math.PI) / 360)
+  const T = Math.tan(lam)
+  const buf = renderer.getDrawingBufferSize(new THREE.Vector2())
+  const asp = buf.y / buf.x
+  const TY = Math.max(0.02, (asp * lam) / Math.cos(lam))
+  camera.aspect = T / TY
+  camera.fov = (2 * Math.atan(TY) * 180) / Math.PI
+  camera.updateProjectionMatrix()
+  let Wi = Math.round((buf.x * T) / lam)             // 內部畫面寬度:讓正中央的像素密度與輸出相同
+  Wi = Math.min(Wi, 3600)
+  const Hi = Math.round((Wi * TY) / T)
+  cyl.setup(Wi, Hi, lam, asp, T, TY)
+  uniforms.uProj.value = Hi / (2 * TY)
+  composer.render()
+  requestAnimationFrame(frame)
+}
+
+async function load() {
+  const msg = document.getElementById('msg')
+  try {
+    const r = await fetch('/models/jiufen-vista.json?t=' + Date.now(), { cache: 'no-store' })
+    if (!r.ok) throw new Error(r.status)
+    build(await r.json())
+    msg.hidden = true
+  } catch (e) {
+    msg.hidden = false
+    msg.textContent = '還沒有遠景資料:先執行 tools/blender/jiufen_vista.py(會輸出 jiufen-vista.json)'
+  }
+}
+const es = new EventSource('/events')
+es.onmessage = (ev) => { const m = JSON.parse(ev.data); if (m.type === 'image' && m.name === 'jiufen-vista.png') load() }
+await load()
+reset()
+requestAnimationFrame(frame)
+</script>
+</body>
+</html>

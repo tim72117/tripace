@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>遠景預覽</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #0d0b16; color: #ddd; font: 13px -apple-system, 'PingFang TC', sans-serif; }
+  header { display: flex; gap: 12px; align-items: center; padding: 8px 14px; background: #181427; }
+  header a { color: #9ab; }
+  #st { margin-left: auto; font-size: 12px; opacity: .8; }
+  #st.live::before { content: '● '; color: #5c8; }
+  #st.off::before { content: '● '; color: #c55; }
+  main { height: calc(100% - 38px); overflow: auto; display: grid; place-items: center; }
+  main.fit img { max-width: 100%; max-height: 100%; cursor: zoom-in; }
+  main.full { place-items: start; }
+  main.full img { cursor: zoom-out; }
+  .none { opacity: .6; }
+</style>
+</head>
+<body>
+<header>
+  <strong>遠景預覽</strong>
+  <select id="file"></select>
+  <a href="/vista3d">3D 即時視角</a>
+  <a href="/">← 模型預覽</a>
+  <span id="st">連線中…</span>
+</header>
+<main id="m" class="fit"><img id="img" alt=""><div id="none" class="none" hidden>tools/blender/out/ 裡還沒有 .png</div></main>
+<script>
+const $ = (id) => document.getElementById(id)
+const PREFERRED = 'jiufen-vista.png'
+let selected = ''
+async function list() {
+  const r = await (await fetch('/api/images')).json()
+  const sel = $('file')
+  sel.innerHTML = r.map((f) => `<option value="${f.name}">${f.name}</option>`).join('')
+  $('none').hidden = r.length > 0
+  if (!r.length) { $('img').removeAttribute('src'); return }
+  if (!r.some((f) => f.name === selected)) selected = r.some((f) => f.name === PREFERRED) ? PREFERRED : r[0].name
+  sel.value = selected
+  show()
+}
+function show() { if (selected) $('img').src = `/models/${encodeURIComponent(selected)}?t=${Date.now()}` }
+$('file').onchange = (e) => { selected = e.target.value; show() }
+$('img').onclick = () => { const m = $('m'); const full = m.classList.toggle('full'); m.classList.toggle('fit', !full) }
+const es = new EventSource('/events')
+es.onopen = () => { $('st').textContent = '即時更新中'; $('st').className = 'live' }
+es.onerror = () => { $('st').textContent = '連線中斷,重試中…'; $('st').className = 'off' }
+es.onmessage = (ev) => {
+  const m = JSON.parse(ev.data)
+  if (m.type !== 'image') return
+  if (!selected || m.name === selected) { selected = m.name; list() } else list()
+}
+list()
+</script>
+</body>
+</html>

@@ -19,6 +19,7 @@ cp tools/blender/out/amei-teahouse.glb src/island/scenes/night-jiufen/assets/ame
 ## 檔案
 - `kit.py`:共用工具(含 `anchor()`:放不畫幾何的命名錨點)。座標一律用 glTF/three 的(x 右、y 上、z 前,公尺,原點在腳底中心);按材質累積 bmesh、最後每個材質一個物件;形狀(方塊、斜樑、截頭錐、圓柱、橢球)自己建,不依賴 `bpy.ops`。
 - `amei_teahouse.py`:阿妹茶樓。腳本內有**數字驗證**(尺寸、原點、面數、材質數),不合格就不匯出。
+- `shophouse.py`:台灣老街店屋(兩層加頂樓加蓋,真實尺寸約 5.8×10.6×9.6 m,正面朝 +z)。含波浪鐵皮/鐵捲門橫紋、壁柱窗框、招牌、雨遮、屋頂加蓋小屋與遮陽棚;腳本內有數字驗證。執行:`blender --background --python tools/blender/shophouse.py -- tools/blender/out/shophouse.glb [--render]`。
 - `stone_steps.py`:石階地形磚,一次匯出 8 種樣式(`steps-5`、`steps-10`、`steps-landing` 中間有平台、`steps-to-landing`、`landing-to-steps`、`landing`、`turn-left`、`turn-right`),寬 3 m、階高 0.18、階深 0.36。頭尾對齊可串接:原點在入口邊中心,出口點與朝向在各自的 `.stats.json` 的 `exit`,模型內有 `Socket_bottom`/`Socket_top`/`Socket_rail_L`/`Socket_rail_R` 空節點,`.stats.json` 的 `dims` 記錄階高階深、總長總高、尾端平台起點比例。執行:`blender --background --python tools/blender/stone_steps.py -- tools/blender/out [--render] [樣式名…]`。
 - `out/`:WIP 輸出(已 gitignore)。
 
