@@ -1,0 +1,56 @@
+# onagent 平台上 blog-article-writer app 的 update_block tool 定義。
+# 前端實作:web/src/blog/articleTools.ts(updateBlock)。
+# 推送:onagent tool create -api <onagent 後端 URL> blog-article-writer web/tools/blog-article/update_block.yaml
+
+name: update_block
+description: >-
+  修改既有區塊:帶 id 加上要改的欄位(欄位意義同 add_block),沒帶的欄位維持
+  原值,改完會整體重新驗證。kind 不能改;要換種類請 remove_block 後再
+  add_block。id 來自 get_article 或 add_block 的回傳。
+kind: query
+parameters:
+  type: object
+  properties:
+    id:
+      type: string
+      description: 要修改的區塊 id。
+    text:
+      type: string
+      description: paragraph 的新文字。
+    variant:
+      type: string
+      enum: [heading, emphasis, quote, caption]
+    alt:
+      type: string
+    caption:
+      type: string
+    width:
+      type: string
+      enum: [column, wide, full]
+    float:
+      type: string
+      enum: [none, left, right]
+    orientation:
+      type: string
+      enum: [landscape, portrait]
+    overlayText:
+      type: string
+    layout:
+      type: string
+      enum: [grid, row, split]
+    items:
+      type: array
+      description: gallery 的完整圖片清單(整組取代)。
+      items:
+        type: object
+        properties:
+          photoId:
+            type: string
+          alt:
+            type: string
+          caption:
+            type: string
+          orientation:
+            type: string
+            enum: [landscape, portrait]
+  required: [id]

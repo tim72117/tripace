@@ -1,0 +1,15 @@
+# onagent 平台上 blog-article-writer app 的 get_article tool 定義。
+# 前端實作:web/src/blog/articleTools.ts(getArticle)。
+# 推送:onagent tool create -api <onagent 後端 URL> blog-article-writer web/tools/blog-article/get_article.yaml
+
+name: get_article
+description: >-
+  讀取編輯器裡目前這篇文章:title、lede,以及依順序排列的區塊清單,每個區塊
+  有 id、kind(paragraph / image / gallery)與摘要(段落文字、photoId、版面)。
+  add_block 的 afterId、update_block / move_block / remove_block 的 id 都要
+  用這裡回傳的區塊 id。使用者可能在對話之間自己改過文章,要依現況調整時先
+  呼叫;你自己剛做的變更不用重讀。
+kind: query
+parameters:
+  type: object
+  properties: {}

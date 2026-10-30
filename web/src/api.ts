@@ -1428,12 +1428,13 @@ export function fetchMyUploadedPhotos(cfg: ClientConfig) {
 // URL(見後端 handleBlogPhotoUploadURL 的完整說明)。呼叫端拿到 uploadUrl
 // 後,直接用瀏覽器原生 fetch PUT 給 GCS,不經過我方 server 轉傳一次完整
 // 的圖片位元組;拿到 publicUrl 則是這張原圖之後的公開存取網址。
-export function createPhotoUploadURL(cfg: ClientConfig, contentType: string) {
+// note(選填):建立記錄時一併寫入的備註(選圖後先在前端辨識出來的描述,見 blog/PhotoManagerPage.tsx)。
+export function createPhotoUploadURL(cfg: ClientConfig, contentType: string, note?: string) {
   return request<{ photoId: string; uploadUrl: string; publicUrl: string }>(
     cfg,
     'POST',
     '/v1/blog/photos/upload-url',
-    { contentType },
+    note ? { contentType, note } : { contentType },
   )
 }
 
@@ -1506,6 +1507,16 @@ export function setPhotoRating(cfg: ClientConfig, photoId: string, rating: numbe
     'PATCH',
     `/v1/blog/photos/${encodeURIComponent(photoId)}/rating`,
     { rating },
+  )
+}
+
+// setPhotoNote:PATCH /v1/blog/photos/{photoId}/note——設定這張圖的備註(整段取代,傳空字串清空)。
+export function setPhotoNote(cfg: ClientConfig, photoId: string, note: string) {
+  return request<{ status: string }>(
+    cfg,
+    'PATCH',
+    `/v1/blog/photos/${encodeURIComponent(photoId)}/note`,
+    { note },
   )
 }
 

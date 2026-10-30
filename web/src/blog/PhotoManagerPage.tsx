@@ -6,6 +6,7 @@ import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from '../home/SiteNavBut
 import * as api from '../api'
 import type { UploadedPhoto } from '../api'
 import { VARIANT_KINDS, generatePhotoVariants, type PhotoVariantKind } from './photoVariants'
+import { BLOG_PHOTO_RECOGNITION_ENABLED, recognizePhoto } from './photoRecognition'
 import { ErrorBanner, errMsg } from '../AppCommon'
 import { Button } from '../components/Button'
 import { PhotoFocalEditor } from './PhotoFocalEditor'
@@ -54,6 +55,9 @@ interface StagedPhoto {
   variants: Record<PhotoVariantKind, Blob>
   previewUrl: string
   error?: string
+  // note:選圖後(上傳前)用 llm 縮圖辨識出來的描述,上傳時一併存成備註。
+  note?: string
+  recognizing?: boolean
 }
 
 export function PhotoManagerPage() {
@@ -164,6 +168,8 @@ export function PhotoManagerBody({ cfg }: { cfg: api.ClientConfig }) {
   // staged:選好檔案、前端縮圖完成但「尚未上傳」的圖片。使用者先看到縮圖預覽,按「上傳」才送後端。
   const [staged, setStaged] = useState<StagedPhoto[]>([])
   const [preparing, setPreparing] = useState(false)
+  // recognizing:正在送 onagent 辨識的圖片 id(手動觸發,結果寫進備註,見 handleRecognize)。
+  const [recognizing, setRecognizing] = useState<Set<string>>(new Set())
   const stagedRef = useRef<StagedPhoto[]>([])
   stagedRef.current = staged
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -225,8 +231,8 @@ export function PhotoManagerBody({ cfg }: { cfg: api.ClientConfig }) {
   // 失敗時拋出 error,呼叫端(handleFileSelected)決定要不要中斷整批。
   // 縮圖已在選檔時由前端產生(thumbnail/large/llm,見 photoVariants.ts 與 handleFilesPicked),
   // 這裡只負責把原圖與縮圖送上去。
-  async function uploadOneFile(file: File, variants: Record<PhotoVariantKind, Blob>) {
-    const { photoId, uploadUrl, publicUrl } = await api.createPhotoUploadURL(cfg, file.type)
+  async function uploadOneFile(file: File, variants: Record<PhotoVariantKind, Blob>, note?: string) {
+    const { photoId, uploadUrl, publicUrl } = await api.createPhotoUploadURL(cfg, file.type, note)
 
     const putRes = await fetch(uploadUrl, {
       method: 'PUT',
@@ -259,6 +265,7 @@ export function PhotoManagerBody({ cfg }: { cfg: api.ClientConfig }) {
         ownerId: '',
         originalUrl: publicUrl,
         status,
+        ...(note ? { note } : {}),
         variants: [],
         createdAt: now,
         updatedAt: now,
@@ -267,6 +274,37 @@ export function PhotoManagerBody({ cfg }: { cfg: api.ClientConfig }) {
     ])
 
     pollUntilSettled(photoId, POLLING_MAX_ATTEMPTS)
+  }
+
+  // handleRecognize:手動觸發——使用者按卡片上的「辨識」才送 onagent。圖片取已存在 GCS 的縮圖(優先 llm 1024px,
+  // 沒有就用 large、thumbnail),成功後把描述存成備註並更新卡片。失敗顯示錯誤橫幅。
+  // 已有備註時先確認,避免蓋掉使用者自己寫的內容。
+  async function handleRecognize(photo: UploadedPhoto) {
+    if (photo.note && !window.confirm('這張圖已有備註,要用辨識結果取代嗎?')) return
+    const variant = ['llm', 'large', 'thumbnail']
+      .map((kind) => photo.variants?.find((v) => v.kind === kind))
+      .find((v) => v != null)
+    if (!variant) {
+      setErr('這張圖還沒有可辨識的縮圖')
+      return
+    }
+    setErr(null)
+    setRecognizing((prev) => new Set(prev).add(photo.id))
+    try {
+      const res = await fetch(variant.url)
+      if (!res.ok) throw new Error(`讀取縮圖失敗(HTTP ${res.status})`)
+      const note = await recognizePhoto(await res.blob())
+      await api.setPhotoNote(cfg, photo.id, note)
+      setPhotos((prev) => prev.map((p) => (p.id === photo.id ? { ...p, note } : p)))
+    } catch (e) {
+      setErr(`辨識失敗:${errMsg(e)}`)
+    } finally {
+      setRecognizing((prev) => {
+        const next = new Set(prev)
+        next.delete(photo.id)
+        return next
+      })
+    }
   }
 
   // handleFilesPicked:選檔入口——只在前端解碼並產生縮圖,放進 staged 顯示預覽,不碰後端。
@@ -300,6 +338,22 @@ export function PhotoManagerBody({ cfg }: { cfg: api.ClientConfig }) {
     }
   }
 
+  // handleRecognizeStaged:選圖後、上傳前就能辨識——直接用已在前端產生的 llm 縮圖(不必等上傳),
+  // 結果先放在待上傳卡片上,上傳時一併存成備註。已有辨識結果時再按一次會重新辨識。
+  async function handleRecognizeStaged(key: string) {
+    const item = stagedRef.current.find((p) => p.key === key)
+    if (!item || item.recognizing) return
+    setErr(null)
+    setStaged((prev) => prev.map((p) => (p.key === key ? { ...p, recognizing: true } : p)))
+    try {
+      const note = await recognizePhoto(item.variants.llm)
+      setStaged((prev) => prev.map((p) => (p.key === key ? { ...p, note, recognizing: false } : p)))
+    } catch (e) {
+      setErr(`辨識失敗:${errMsg(e)}`)
+      setStaged((prev) => prev.map((p) => (p.key === key ? { ...p, recognizing: false } : p)))
+    }
+  }
+
   function removeStaged(key: string) {
     setStaged((prev) => {
       const hit = prev.find((p) => p.key === key)
@@ -322,7 +376,7 @@ export function PhotoManagerBody({ cfg }: { cfg: api.ClientConfig }) {
         const item = batch[i]
         setUploadProgress({ done: i, total: batch.length })
         try {
-          await uploadOneFile(item.file, item.variants)
+          await uploadOneFile(item.file, item.variants, item.note)
           removeStaged(item.key)
         } catch (e) {
           const msg = errMsg(e)
@@ -438,10 +492,26 @@ export function PhotoManagerBody({ cfg }: { cfg: api.ClientConfig }) {
               </div>
               <div className={styles.meta}>
                 <span className={styles.note} title={item.file.name}>{item.file.name}</span>
+                {item.recognizing ? (
+                  <span className={styles.noteEmpty}>辨識中…</span>
+                ) : item.note ? (
+                  <span className={styles.note} title={item.note}>{item.note}</span>
+                ) : null}
                 {item.error && <span className={styles.noteEmpty} style={{ color: 'var(--ios-red, #d9534f)' }}>{item.error}</span>}
               </div>
               <div className={styles.cardFooter}>
                 <span className={styles.statusText}>{item.error ? '上傳失敗' : '待上傳'}</span>
+                {BLOG_PHOTO_RECOGNITION_ENABLED && (
+                  <button
+                    type="button"
+                    className={styles.retryBtn}
+                    onClick={() => handleRecognizeStaged(item.key)}
+                    disabled={uploading || item.recognizing}
+                    title="用 AI 辨識這張圖,結果會在上傳時存成備註"
+                  >
+                    {item.recognizing ? '辨識中…' : item.note ? '重新辨識' : '辨識'}
+                  </button>
+                )}
                 <button
                   type="button"
                   className={styles.deleteBtn}
@@ -467,6 +537,8 @@ export function PhotoManagerBody({ cfg }: { cfg: api.ClientConfig }) {
             <PhotoCard
               key={photo.id}
               photo={photo}
+              recognizing={recognizing.has(photo.id)}
+              onRecognize={BLOG_PHOTO_RECOGNITION_ENABLED ? () => handleRecognize(photo) : undefined}
               onClick={() => handlePhotoClick(photo)}
               onRetry={() => handleRetry(photo.id)}
               onDelete={() => handleDelete(photo.id)}
@@ -496,12 +568,16 @@ export function PhotoManagerBody({ cfg }: { cfg: api.ClientConfig }) {
 // 中提示、failed 錯誤+重試按鈕、ready 可點擊進入焦點編輯器)。
 function PhotoCard({
   photo,
+  recognizing,
+  onRecognize,
   onClick,
   onRetry,
   onDelete,
   onRatingChange,
 }: {
   photo: UploadedPhoto
+  recognizing: boolean
+  onRecognize?: () => void
   onClick: () => void
   onRetry: () => void
   onDelete: () => void
@@ -569,6 +645,8 @@ function PhotoCard({
         </div>
         {photo.note ? (
           <span className={styles.note} title={photo.note}>{photo.note}</span>
+        ) : recognizing ? (
+          <span className={styles.noteEmpty}>辨識中…</span>
         ) : (
           <span className={styles.noteEmpty}>未標注</span>
         )}
@@ -589,6 +667,20 @@ function PhotoCard({
           <span className={styles.statusText}>
             {status === 'pending' ? '處理中' : '已就緒'}
           </span>
+        )}
+        {onRecognize && status === 'ready' && (
+          <button
+            type="button"
+            className={styles.retryBtn}
+            disabled={recognizing}
+            onClick={(e) => {
+              e.stopPropagation()
+              onRecognize()
+            }}
+            title="用 AI 辨識這張圖,結果存成備註"
+          >
+            {recognizing ? '辨識中…' : '辨識'}
+          </button>
         )}
         <button
           type="button"

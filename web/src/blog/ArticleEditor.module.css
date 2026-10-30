@@ -1216,3 +1216,186 @@
   line-height: 1.6;
   color: var(--ink-soft);
 }
+
+/* ---------- AI 協助撰寫側欄(ArticleAiPanel) ----------
+   版面:.body 把文章欄與側欄並排;側欄 sticky 在 topbar 之下、高度等於視窗高度減 topbar,
+   文章欄隨 .main 捲動、側欄自己不動,所以「邊看文章變化、邊看 AI 回覆」同時成立。
+   .body 用 align-items:flex-start——側欄若被 stretch 成跟文章一樣高,sticky 就失效。
+   窄於 1100px 時側欄改成疊在文章右側的抽屜(不加遮罩,文章左半仍可見、可捲)。 */
+.body {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: flex-start;
+  min-width: 0;
+}
+.body .articlePane { min-width: 0; }
+.aiSide {
+  flex: 0 0 360px;
+  position: sticky;
+  top: 60px;
+  height: calc(100vh - 60px);
+  height: calc(100dvh - 60px);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1px solid var(--line-soft);
+  background: var(--paper-card);
+}
+.aiSide[hidden] { display: none; }
+.aiSideHead {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 48px;
+  padding: 0 12px 0 16px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.aiTitle {
+  flex: 1 1 auto;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+}
+.aiHeadBtn {
+  flex: none;
+  height: 28px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.aiHeadBtn:hover { border-color: var(--ink-soft); color: var(--ink); background: var(--paper-dim); }
+.aiHeadBtn:focus-visible,
+.aiClose:focus-visible,
+.aiSend:focus-visible { outline: 2px solid var(--brick); outline-offset: 2px; }
+.aiClose {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.aiClose:hover { background: var(--paper-dim); color: var(--ink); }
+.aiLines {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  scrollbar-width: thin;
+}
+.aiEmpty {
+  margin: auto 0;
+  padding: 0 6px;
+  text-align: center;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--ink-faint);
+}
+.aiLine {
+  max-width: 92%;
+  font-size: 13px;
+  line-height: 1.65;
+  padding: 7px 11px;
+  border-radius: 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.aiLine_user { background: var(--paper-dim); color: var(--ink); align-self: flex-end; }
+.aiLine_assistant { background: var(--brick-wash); color: var(--ink); align-self: flex-start; }
+.aiLine_notice { align-self: center; font-size: 11.5px; color: var(--ink-faint); padding: 2px 6px; }
+.aiLine_error { align-self: flex-start; color: var(--brick); font-size: 12px; padding: 2px 6px; }
+.aiBusy {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--ink-faint);
+  padding: 2px 6px;
+}
+.aiBusyDot,
+.aiToggleDot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--brick-soft);
+  animation: aiPulse 1.2s ease-in-out infinite;
+}
+.aiToggleDot { margin-left: 6px; }
+@keyframes aiPulse { 50% { opacity: 0.35; } }
+.aiComposer {
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 10px 12px max(12px, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line-soft);
+}
+.aiInput {
+  flex: 1 1 auto;
+  min-width: 0;
+  resize: none;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  max-height: 120px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+  color: var(--ink);
+  field-sizing: content;
+}
+.aiInput:focus-visible { outline: 2px solid var(--brick); outline-offset: 1px; }
+.aiInput:disabled { opacity: 0.6; }
+.aiSend {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: var(--brick);
+  color: var(--paper-card);
+  cursor: pointer;
+}
+.aiSend:hover { background: var(--brick-soft); }
+.aiSend:disabled { opacity: 0.45; cursor: not-allowed; background: var(--brick); }
+/* AI 剛改到的區塊:短暫閃一下底色,讓使用者看得到「改了哪裡」。 */
+.blockFlash { animation: blockFlash 1.6s ease-out; }
+@keyframes blockFlash {
+  0% { background: var(--brick-wash); }
+  100% { background: transparent; }
+}
+@media (max-width: 1100px) {
+  .body { position: relative; }
+  .aiSide {
+    position: fixed;
+    top: 60px;
+    right: 0;
+    bottom: 0;
+    height: auto;
+    width: min(360px, calc(100vw - 48px));
+    z-index: 6;
+    box-shadow: var(--shadow-card);
+  }
+}

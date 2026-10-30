@@ -1,0 +1,19 @@
+# onagent 平台上 blog-article-writer app 的 move_block tool 定義。
+# 前端實作:web/src/blog/articleTools.ts(moveBlock)。
+# 推送:onagent tool create -api <onagent 後端 URL> blog-article-writer web/tools/blog-article/move_block.yaml
+
+name: move_block
+description: >-
+  移動一個區塊的位置:id 是要移動的區塊,afterId 是移到哪個區塊後面,
+  省略=移到最後,"start"=移到最前面。id 與 afterId 來自 get_article。
+kind: query
+parameters:
+  type: object
+  properties:
+    id:
+      type: string
+      description: 要移動的區塊 id。
+    afterId:
+      type: string
+      description: 移到這個區塊 id 後面;省略=最後;"start"=最前面。
+  required: [id]
