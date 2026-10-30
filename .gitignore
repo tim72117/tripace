@@ -76,3 +76,9 @@ DerivedData/
 # 但跟 tripace 產品本身無關——不能讓外層這個 repo 把它當一般目錄追蹤
 # 內容(那樣會把它自己的 .git 一併掃進來,狀態會很奇怪),整個排除。
 marketing/
+
+# tools/record/record-ai-plan.ts 執行後產生的錄製成品(mp4/webm)——
+# 每次重錄都會覆寫,檔案也不小,是要直接上傳到 Facebook/Instagram 的
+# 廣告素材,不是原始碼,不應提交進版控。
+tools/record/output
+tools/record/node_modules
