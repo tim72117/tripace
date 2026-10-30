@@ -1,0 +1,15 @@
+# onagent 平台上 blog-article-writer app 的 save_article tool 定義。
+# 前端實作:web/src/blog/articleTools.ts(saveArticle),實際存檔走 ArticleEditor 的 persistArticle(與「儲存」按鈕同一條)。
+# 推送:onagent tool create -api <onagent 後端 URL> blog-article-writer web/tools/blog-article/save_article.yaml
+
+name: save_article
+description: >-
+  把編輯器裡目前這篇文章存成草稿(新文章會自動產生網址 slug),成功回傳
+  {ok, slug, created, status:"draft"}。沒有參數。只有在使用者明確同意存檔
+  之後才可呼叫,不要自己決定存。這個工具不會發佈文章;文章已發佈、沒有標題
+  或沒有任何區塊時會回傳錯誤,依訊息處理:已發佈就告訴使用者自己按「儲存」,
+  其餘先補齊再重試,不要用相同狀態重複呼叫。
+kind: query
+parameters:
+  type: object
+  properties: {}

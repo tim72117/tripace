@@ -1,0 +1,83 @@
+# onagent 平台上 blog-article-writer app 的 add_block tool 定義。
+# 前端實作:web/src/blog/articleTools.ts(addBlock、buildBlock 做驗證)。
+# 推送:onagent tool create -api <onagent 後端 URL> blog-article-writer web/tools/blog-article/add_block.yaml
+# description 平台上限 600 字元,改完請重新估算長度。
+
+name: add_block
+description: >-
+  在文章裡新增一個區塊,成功回傳 {id, position, total}。afterId 省略=加在
+  最後,"start"=最前面,或帶某區塊 id=插在它後面。一次只呼叫一個,成功後再
+  呼叫下一個。kind=paragraph:text 必填,variant 選填(heading 小標題 /
+  emphasis 重點句 / quote 引言 / caption 小字)。kind=image:photoId 與 alt
+  必填;width(column/wide/full,預設 column);float(none/left/right,只有
+  column 才可用 left/right,且後面接的段落要夠長約 150 字);直式圖要設
+  orientation=portrait;短句氛圍用 overlayText。kind=gallery:items(≥2 張,
+  建議 2~4)每張 photoId+alt;layout grid(預設)/row(≥5 張)/split(剛好 3
+  張,第一張直式大圖)。同一場景有多張圖用 gallery,不要拆成多個 image。
+  錯誤訊息會說明怎麼修正,依訊息調整後重試,不要用相同參數重呼叫。
+kind: query
+parameters:
+  type: object
+  properties:
+    kind:
+      type: string
+      enum: [paragraph, image, gallery]
+      description: 區塊種類。
+    afterId:
+      type: string
+      description: 插在這個區塊 id 後面;省略=最後;"start"=最前面。
+    text:
+      type: string
+      description: kind=paragraph 的文字內容。
+    variant:
+      type: string
+      enum: [heading, emphasis, quote, caption]
+      description: kind=paragraph 的樣式變體,省略=一般內文。
+    photoId:
+      type: string
+      description: kind=image 的圖片 id,必須是 list_photos 回傳過的 photoId。
+    alt:
+      type: string
+      description: kind=image 的替代文字,寫圖片實際畫面內容。
+    caption:
+      type: string
+      description: 圖說(image)或整組共用說明(gallery),選填。
+    width:
+      type: string
+      enum: [column, wide, full]
+      description: kind=image 的欄寬檔位,預設 column。
+    float:
+      type: string
+      enum: [none, left, right]
+      description: kind=image 的繞排方向,只有 width=column 時可用 left/right。
+    orientation:
+      type: string
+      enum: [landscape, portrait]
+      description: kind=image 的圖片方向;直式圖要設 portrait。
+    overlayText:
+      type: string
+      description: kind=image 疊在圖片上的短句,設定後忽略 width/float。
+    layout:
+      type: string
+      enum: [grid, row, split]
+      description: kind=gallery 的版面,預設 grid;split 需剛好 3 張。
+    items:
+      type: array
+      description: kind=gallery 的圖片清單,至少 2 張。
+      items:
+        type: object
+        properties:
+          photoId:
+            type: string
+            description: list_photos 回傳過的 photoId。
+          alt:
+            type: string
+            description: 這張圖的替代文字。
+          caption:
+            type: string
+            description: 這張圖自己的說明,選填。
+          orientation:
+            type: string
+            enum: [landscape, portrait]
+            description: 這張圖的方向,逐張指定。
+  required: [kind]

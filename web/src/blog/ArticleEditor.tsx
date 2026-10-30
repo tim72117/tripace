@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { ArrowLeft, MapPin, Image as ImageIcon, Type, Images, X, GripVertical, Quote, Pilcrow } from 'lucide-react'
+import { ArrowLeft, Sparkles, MapPin, Image as ImageIcon, Type, Images, X, GripVertical, Quote, Pilcrow } from 'lucide-react'
 import type * as api from '../api'
 import * as apiFns from '../api'
 import { errMsg } from '../AppCommon'
 import { Button } from '../components/Button'
 import { PhotoManagerBody } from './PhotoManagerPage'
+import { ArticleAiPanel, BLOG_ARTICLE_AI_ENABLED } from './ArticleAiPanel'
+import type { ArticleEditorHandle } from './articleTools'
 import type {
   ThemePageBlock,
   ThemePageContent,
@@ -395,6 +397,97 @@ export function ArticleEditor({
   const [saveErr, setSaveErr] = useState<string | null>(null)
   const [dirty, setDirty] = useState(false)
 
+  // AI 協助撰寫(ArticleAiPanel + articleTools)的控制介面。工具在同一輪裡會連續呼叫多次,React 還沒重繪就要讀到
+  // 前一次的結果,所以另外用 ref 保存「最新」的 title/lede/blocks/photos,setState 時同步更新 ref 再寫進 state。
+  // 只改編輯器裡未存檔的狀態,所以一律標記為 dirty。
+  const latestRef = useRef({
+    title: '',
+    lede: '',
+    blocks: [] as EditableBlock[],
+    photos: [] as api.UploadedPhoto[],
+    slug: '',
+    slugLocked: false,
+    status: 'draft' as 'draft' | 'published',
+    palette: undefined as ThemePagePalette | undefined,
+  })
+  latestRef.current.slug = slug
+  latestRef.current.slugLocked = slugLocked
+  latestRef.current.status = status
+  latestRef.current.palette = palette
+  latestRef.current.title = title
+  latestRef.current.lede = lede
+  latestRef.current.blocks = blocks
+  latestRef.current.photos = photos
+  // aiOpen:AI 側欄是否展開。預設:新文章(沒有 slug)展開——那正是「輸入概略讓 AI 排章節」的入口,既有文章收合;
+  // 使用者手動開關後記在 localStorage(同一個瀏覽器延續)。localStorage 取不到時退回預設。
+  const [aiOpen, setAiOpen] = useState<boolean>(() => {
+    if (!BLOG_ARTICLE_AI_ENABLED) return false
+    try {
+      const v = localStorage.getItem('blog.articleAi.open')
+      if (v === '1') return true
+      if (v === '0') return false
+    } catch {
+      /* 無痕/封鎖儲存時忽略 */
+    }
+    return initialSlug == null
+  })
+  const [aiBusy, setAiBusy] = useState(false)
+  // flashBlockId:AI 剛新增/修改的區塊 id,短暫加上閃爍樣式並捲到視窗內。
+  const [flashBlockId, setFlashBlockId] = useState<string | null>(null)
+  function toggleAi() {
+    setAiOpen((v) => {
+      const next = !v
+      try {
+        localStorage.setItem('blog.articleAi.open', next ? '1' : '0')
+      } catch {
+        /* 同上 */
+      }
+      return next
+    })
+  }
+  const aiToggleRef = useRef<HTMLButtonElement | null>(null)
+  function closeAi() {
+    setAiOpen(false)
+    try {
+      localStorage.setItem('blog.articleAi.open', '0')
+    } catch {
+      /* 同上 */
+    }
+    aiToggleRef.current?.focus()
+  }
+  const aiHandleRef = useRef<ArticleEditorHandle | null>(null)
+  if (aiHandleRef.current === null) {
+    aiHandleRef.current = {
+      getState: () => ({ title: latestRef.current.title, lede: latestRef.current.lede, blocks: latestRef.current.blocks }),
+      setState: (next) => {
+        const before = new Map(latestRef.current.blocks.map((b) => [b.id, JSON.stringify(b)]))
+        const changed = (next.blocks as EditableBlock[]).find((b) => before.get(b.id) !== JSON.stringify(b))
+        if (changed) setFlashBlockId(changed.id)
+        latestRef.current.title = next.title
+        latestRef.current.lede = next.lede
+        latestRef.current.blocks = next.blocks as EditableBlock[]
+        setTitle(next.title)
+        setLede(next.lede)
+        setBlocks(next.blocks as EditableBlock[])
+        setDirty(true)
+      },
+      getPhotos: () => latestRef.current.photos,
+      isPublished: () => latestRef.current.status === 'published',
+      save: async () => {
+        setSaveErr(null)
+        setSaving(true)
+        try {
+          return await persistArticle()
+        } catch (e) {
+          setSaveErr(errMsg(e))
+          throw e
+        } finally {
+          setSaving(false)
+        }
+      },
+    }
+  }
+
   // 載入素材庫清單(插入圖片/圖組的候選、以及渲染既有 image/gallery
   // block 需要的縮圖網址,見 photoURLFor 的完整說明)——跟下方掛載的
   // PhotoManagerBody 各自獨立呼叫 fetchMyUploadedPhotos,不是共用同一份
@@ -452,6 +545,14 @@ export function ArticleEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cfg.baseURL, cfg.token, initialSlug])
 
+  // 閃爍區塊:捲到視窗內,1.6 秒後移除樣式。
+  useEffect(() => {
+    if (!flashBlockId) return
+    document.querySelector(`[data-block-id="${flashBlockId}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+    const t = setTimeout(() => setFlashBlockId(null), 1600)
+    return () => clearTimeout(t)
+  }, [flashBlockId])
+
   function markDirty() {
     setDirty(true)
   }
@@ -506,21 +607,33 @@ export function ArticleEditor({
     setPicker(null)
   }
 
+  // persistArticle:實際存檔。一律讀 latestRef(最新狀態),不讀 render 當下的 state——AI 工具(save_article)
+  // 在同一輪裡剛改完文章就會呼叫,React 還沒重繪,直接讀 state 會存到舊內容。成功回傳最終 slug 與是否為新建。
+  async function persistArticle(): Promise<{ slug: string; created: boolean }> {
+    const cur = latestRef.current
+    let finalSlug = cur.slug.trim()
+    if (finalSlug === '') finalSlug = slugify(cur.title)
+    const content = buildContent(finalSlug, cur.title, cur.lede, cur.blocks, cur.status, cur.palette)
+    let created = false
+    if (cur.slugLocked) {
+      await apiFns.updateMyContentPage(cfg, finalSlug, content)
+    } else {
+      await apiFns.createMyContentPage(cfg, finalSlug, content)
+      created = true
+      latestRef.current.slugLocked = true
+      setSlugLocked(true)
+    }
+    latestRef.current.slug = finalSlug
+    setSlug(finalSlug)
+    setDirty(false)
+    return { slug: finalSlug, created }
+  }
+
   async function handleSave() {
     setSaveErr(null)
-    let finalSlug = slug.trim()
-    if (finalSlug === '') finalSlug = slugify(title)
     setSaving(true)
     try {
-      const content = buildContent(finalSlug, title, lede, blocks, status, palette)
-      if (slugLocked) {
-        await apiFns.updateMyContentPage(cfg, finalSlug, content)
-      } else {
-        await apiFns.createMyContentPage(cfg, finalSlug, content)
-        setSlugLocked(true)
-      }
-      setSlug(finalSlug)
-      setDirty(false)
+      await persistArticle()
     } catch (e) {
       setSaveErr(errMsg(e))
     } finally {
@@ -594,6 +707,21 @@ export function ArticleEditor({
             <option value="ocean-cool">海洋藍調</option>
             <option value="night-market">夜市暖橙</option>
           </select>
+          {BLOG_ARTICLE_AI_ENABLED && (
+            <button
+              type="button"
+              ref={aiToggleRef}
+              className={styles.btn}
+              onClick={toggleAi}
+              aria-pressed={aiOpen}
+              aria-controls="article-ai-side"
+              title="AI 協助撰寫"
+            >
+              <Sparkles size={14} strokeWidth={2} style={{ marginRight: 6 }} />
+              AI
+              {aiBusy && <span className={styles.aiToggleDot} />}
+            </button>
+          )}
           <button type="button" className={styles.btn} onClick={() => setPreviewing((v) => !v)}>
             {previewing ? '返回編輯' : '預覽'}
           </button>
@@ -606,6 +734,7 @@ export function ArticleEditor({
         </div>
       </div>
 
+      <div className={styles.body}>
       <div className={styles.articlePane}>
         <div className={styles.cover}>
           <div className={styles.coverEditHint}>點擊更換封面（尚未實作上傳）</div>
@@ -645,6 +774,8 @@ export function ArticleEditor({
           {blocks.map((block, i) => (
             <div
               key={block.id}
+              data-block-id={block.id}
+              className={block.id === flashBlockId ? styles.blockFlash : undefined}
               draggable={!previewing}
               onDragStart={() => setDragIndex(i)}
               onDragOver={(e) => e.preventDefault()}
@@ -721,6 +852,10 @@ export function ArticleEditor({
             <PhotoManagerBody cfg={cfg} />
           </div>
         </div>
+      </div>
+      {BLOG_ARTICLE_AI_ENABLED && (
+        <ArticleAiPanel handle={aiHandleRef.current} open={aiOpen} onClose={closeAi} onBusyChange={setAiBusy} />
+      )}
       </div>
 
       {picker && (

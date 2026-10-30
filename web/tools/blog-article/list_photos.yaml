@@ -1,0 +1,18 @@
+# onagent 平台上 blog-article-writer app 的 list_photos tool 定義。
+# 前端實作:web/src/blog/articleTools.ts(listPhotos)。app 背景與用法見 onagent-thought-blog-article.yaml。
+# 推送(需要 onagent CLI,見 .claude/skills/onagent-cli-setup):
+#   onagent tool create -api <onagent 後端 URL> blog-article-writer web/tools/blog-article/list_photos.yaml
+# description 平台上限 600 字元,改完請重新估算長度。
+
+name: list_photos
+description: >-
+  列出使用者素材庫裡「已處理完成」的圖片,每張回傳 photoId、note(使用者或
+  AI 標注的場景描述,空字串代表沒有備註)、rating(1~3 品質評分,null 代表
+  未評分)、orientation(portrait 直式 / landscape 橫式)。回傳的
+  withoutNote 是沒有備註的張數。排文章前先呼叫一次,依 note 判斷每張圖拍
+  了什麼;add_block 的 photoId 只能用這裡回傳過的值,不可編造。沒有備註的
+  圖不要亂猜內容,可以跳過,或請使用者先補備註。
+kind: query
+parameters:
+  type: object
+  properties: {}

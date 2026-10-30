@@ -1,0 +1,16 @@
+# onagent 平台上 blog-article-writer app 的 remove_block tool 定義。
+# 前端實作:web/src/blog/articleTools.ts(removeBlock)。
+# 推送:onagent tool create -api <onagent 後端 URL> blog-article-writer web/tools/blog-article/remove_block.yaml
+
+name: remove_block
+description: >-
+  刪除一個區塊。id 來自 get_article 或 add_block 的回傳。只刪自己剛加錯的
+  區塊,或使用者明確要求刪的區塊;不要刪使用者原本寫的內容。
+kind: query
+parameters:
+  type: object
+  properties:
+    id:
+      type: string
+      description: 要刪除的區塊 id。
+  required: [id]
