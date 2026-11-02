@@ -243,20 +243,6 @@
 }
 .slugInput:focus { border-color: var(--brick); }
 
-/* ---------- 提示條:左側地圖尚未實作 ---------- */
-.mapPendingNotice {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 24px;
-  background: var(--brick-wash);
-  border-bottom: 1px solid var(--line-soft);
-  color: var(--brick);
-  font-size: 12.5px;
-  font-weight: 600;
-}
-
 /* ---------- 頂部工具列 ----------
    2026-10 視覺重整:原本 52px 高、左側 eyebrow/狀態直向堆疊、返回按鈕
    只是一行無底色的文字,整條看起來像臨時拼湊。改成「返回 | 標題資訊
@@ -1316,6 +1302,20 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+/* AI 回覆用 markdown 渲染:段落自己有間距,不能再沿用 .aiLine 的 pre-wrap(會多出空行)。 */
+.aiMd { white-space: normal; }
+.aiMd > :first-child { margin-top: 0; }
+.aiMd > :last-child { margin-bottom: 0; }
+.aiMd p { margin: 0 0 0.6em; }
+.aiMd ul, .aiMd ol { margin: 0 0 0.6em; padding-left: 1.3em; }
+.aiMd li { margin: 0.15em 0; }
+.aiMd h1, .aiMd h2, .aiMd h3, .aiMd h4 { margin: 0.8em 0 0.4em; font-size: 13.5px; font-weight: 700; }
+.aiMd strong { font-weight: 700; }
+.aiMd blockquote { margin: 0 0 0.6em; padding-left: 0.8em; border-left: 3px solid var(--line-soft); color: var(--ink-faint); }
+.aiMd code { font-size: 12px; padding: 1px 4px; border-radius: 4px; background: var(--paper-dim); }
+.aiMd pre { margin: 0 0 0.6em; padding: 8px 10px; overflow-x: auto; border-radius: 6px; background: var(--paper-dim); }
+.aiMd pre code { padding: 0; background: none; }
+.aiMd a { color: var(--brick); text-decoration: underline; }
 .aiLine_user { background: var(--paper-dim); color: var(--ink); align-self: flex-end; }
 .aiLine_assistant { background: var(--brick-wash); color: var(--ink); align-self: flex-start; }
 .aiLine_notice { align-self: center; font-size: 11.5px; color: var(--ink-faint); padding: 2px 6px; }
@@ -1399,3 +1399,18 @@
     box-shadow: var(--shadow-card);
   }
 }
+
+/* ---------- 本機草稿還原提示條 ---------- */
+.draftBanner {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  padding: 9px 24px;
+  background: var(--brick-wash);
+  border-bottom: 1px solid var(--line-soft);
+  color: var(--ink);
+  font-size: 12.5px;
+}
+.draftBanner > span { flex: 1 1 auto; min-width: 200px; }

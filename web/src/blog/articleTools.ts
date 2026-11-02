@@ -21,10 +21,21 @@ export interface ArticleState {
 
 // ArticleEditorHandle:ArticleEditor 提供給工具的控制介面。getState 必須回傳「最新」狀態(含同一輪稍早的工具
 // 呼叫剛寫入、React 還沒重繪的變更),所以實作端要用 ref 同步更新,不能直接讀 render 當下的 state。
+// StagedPhotoInfo:素材庫「待上傳區」裡已選檔、已在前端縮圖,但尚未上傳的圖片。還沒有 photoId,
+// 只能讓 AI 讀(檔名與辨識備註),不能放進區塊——要先請使用者按「上傳」。
+export interface StagedPhotoInfo {
+  key: string
+  filename: string
+  note?: string
+}
+
 export interface ArticleEditorHandle {
   getState(): ArticleState
   setState(next: ArticleState): void
   getPhotos(): UploadedPhoto[]
+  getStagedPhotos(): StagedPhotoInfo[]
+  // refreshPhotos:向後端重新抓一次素材庫清單並更新編輯器(取得剛上傳、剛改備註的圖);失敗時回傳目前快取,不丟錯。
+  refreshPhotos(): Promise<UploadedPhoto[]>
   // isPublished:這篇是否已發佈(已發佈的不讓 AI 存,避免直接覆蓋公開內容)。
   isPublished(): boolean
   // save:存檔(新文章會建立並自動產生 slug),失敗會 throw。實作端與「儲存」按鈕共用同一條邏輯。
@@ -163,8 +174,8 @@ function asArgs(raw: unknown): Record<string, unknown> {
 export const listPhotos: ClientTool<ArticleEditorHandle> = defineTool(
   'list_photos',
   () => ({}),
-  (_args, handle) => {
-    const ready = handle.getPhotos().filter((p) => p.status === 'ready')
+  async (_args, handle) => {
+    const ready = (await handle.refreshPhotos()).filter((p) => p.status === 'ready')
     const photos = ready.map((p) => {
       const thumb = p.variants?.find((v) => v.kind === 'thumbnail')
       const w = thumb?.width ?? p.width
@@ -176,7 +187,18 @@ export const listPhotos: ClientTool<ArticleEditorHandle> = defineTool(
         orientation: w && h ? (h > w ? 'portrait' : 'landscape') : undefined,
       }
     })
-    return { photos, withoutNote: photos.filter((p) => p.note === '').length }
+    const staged = handle.getStagedPhotos().map((p) => ({
+      stagedKey: p.key,
+      filename: p.filename,
+      note: p.note?.trim() ?? '',
+    }))
+    return {
+      photos,
+      withoutNote: photos.filter((p) => p.note === '').length,
+      // staged:尚未上傳的圖片,沒有 photoId,不能用在 add_block / update_block。
+      staged,
+      stagedNotUploaded: staged.length,
+    }
   },
 )
 

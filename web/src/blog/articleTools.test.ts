@@ -14,6 +14,7 @@ import {
   type ArticleBlock,
   type ArticleEditorHandle,
   type ArticleState,
+  type StagedPhotoInfo,
 } from './articleTools'
 
 function photo(id: string, over: Partial<UploadedPhoto> = {}): UploadedPhoto {
@@ -25,7 +26,7 @@ const PHOTOS = [
   photo('p3', { note: '老街' }),
   photo('p4', { status: 'pending' }),
 ]
-function makeHandle(init: Partial<ArticleState> = {}): ArticleEditorHandle & { state: ArticleState; published: boolean; saved: number } {
+function makeHandle(init: Partial<ArticleState> = {}): ArticleEditorHandle & { state: ArticleState; published: boolean; saved: number; staged: StagedPhotoInfo[] } {
   const h = {
     state: { title: '', lede: '', blocks: [] as ArticleBlock[], ...init },
     getState: () => h.state,
@@ -33,6 +34,9 @@ function makeHandle(init: Partial<ArticleState> = {}): ArticleEditorHandle & { s
       h.state = n
     },
     getPhotos: () => PHOTOS,
+    getStagedPhotos: () => h.staged,
+    refreshPhotos: async () => PHOTOS,
+    staged: [] as StagedPhotoInfo[],
     published: false,
     saved: 0,
     isPublished: () => h.published,
@@ -96,8 +100,21 @@ describe('insertIndex', () => {
 })
 
 describe('tools', () => {
-  it('list_photos 只回 ready,算出方向與未備註數', () => {
-    const r = call(listPhotos)({}, makeHandle()) as {
+  it('list_photos 附上尚未上傳的待上傳圖片(沒有 photoId)', async () => {
+    const h = makeHandle()
+    h.staged = [{ key: 'k1', filename: 'a.jpg', note: ' 清水寺 ' }, { key: 'k2', filename: 'b.jpg' }]
+    const r = (await call(listPhotos)({}, h)) as {
+      staged: { stagedKey: string; filename: string; note: string }[]
+      stagedNotUploaded: number
+    }
+    expect(r.stagedNotUploaded).toBe(2)
+    expect(r.staged).toEqual([
+      { stagedKey: 'k1', filename: 'a.jpg', note: '清水寺' },
+      { stagedKey: 'k2', filename: 'b.jpg', note: '' },
+    ])
+  })
+  it('list_photos 只回 ready,算出方向與未備註數', async () => {
+    const r = (await call(listPhotos)({}, makeHandle())) as {
       photos: { photoId: string; orientation?: string }[]
       withoutNote: number
     }

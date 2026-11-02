@@ -5,8 +5,16 @@ import * as apiFns from '../api'
 import { errMsg } from '../AppCommon'
 import { Button } from '../components/Button'
 import { PhotoManagerBody } from './PhotoManagerPage'
+import {
+  NEW_ARTICLE_KEY,
+  deleteArticleDraft,
+  draftScope,
+  loadArticleDraft,
+  saveArticleDraft,
+  type ArticleDraft,
+} from './draftStore'
 import { ArticleAiPanel, BLOG_ARTICLE_AI_ENABLED } from './ArticleAiPanel'
-import type { ArticleEditorHandle } from './articleTools'
+import type { ArticleEditorHandle, StagedPhotoInfo } from './articleTools'
 import type {
   ThemePageBlock,
   ThemePageContent,
@@ -405,6 +413,7 @@ export function ArticleEditor({
     lede: '',
     blocks: [] as EditableBlock[],
     photos: [] as api.UploadedPhoto[],
+    staged: [] as StagedPhotoInfo[],
     slug: '',
     slugLocked: false,
     status: 'draft' as 'draft' | 'published',
@@ -455,6 +464,13 @@ export function ArticleEditor({
     }
     aiToggleRef.current?.focus()
   }
+  // 本機草稿(IndexedDB,見 draftStore.ts):有未儲存的變更時 debounce 寫入,重新整理/誤關分頁後再開同一篇會詢問是否還原。
+  // pendingDraft:偵測到、尚未決定還原或捨棄的草稿;決定之前不寫入新草稿,避免蓋掉它。
+  const scope = draftScope(cfg.token)
+  const [pendingDraft, setPendingDraft] = useState<ArticleDraft | null>(null)
+  const draftKey = slugLocked ? slug : NEW_ARTICLE_KEY
+  const cfgRef = useRef(cfg)
+  cfgRef.current = cfg
   const aiHandleRef = useRef<ArticleEditorHandle | null>(null)
   if (aiHandleRef.current === null) {
     aiHandleRef.current = {
@@ -472,6 +488,17 @@ export function ArticleEditor({
         setDirty(true)
       },
       getPhotos: () => latestRef.current.photos,
+      getStagedPhotos: () => latestRef.current.staged,
+      refreshPhotos: async () => {
+        try {
+          const list = await apiFns.fetchMyUploadedPhotos(cfgRef.current)
+          latestRef.current.photos = list
+          setPhotos(list)
+        } catch {
+          /* 抓不到就用目前快取 */
+        }
+        return latestRef.current.photos
+      },
       isPublished: () => latestRef.current.status === 'published',
       save: async () => {
         setSaveErr(null)
@@ -544,6 +571,61 @@ export function ArticleEditor({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cfg.baseURL, cfg.token, initialSlug])
+
+  // 載入完成(新文章=一開始;既有文章=伺服器內容填入後)檢查有沒有本機草稿。內容跟目前畫面完全相同的草稿沒有意義,直接丟掉。
+  useEffect(() => {
+    if (loading || loadErr) return
+    let cancelled = false
+    const key = initialSlug ?? NEW_ARTICLE_KEY
+    loadArticleDraft(scope, key).then((d) => {
+      if (cancelled || !d) return
+      const cur = latestRef.current
+      const same =
+        d.title === cur.title &&
+        d.lede === cur.lede &&
+        (d.palette ?? null) === (cur.palette ?? null) &&
+        JSON.stringify(d.blocks) === JSON.stringify(cur.blocks)
+      const empty = d.title === '' && d.lede === '' && d.blocks.length === 0
+      if (same || empty) {
+        void deleteArticleDraft(scope, key)
+        return
+      }
+      setPendingDraft(d)
+    })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, loadErr, scope, initialSlug])
+
+  // 有未儲存變更時 debounce 寫入草稿;全空的新文章不存。
+  useEffect(() => {
+    if (loading || loadErr || !dirty || pendingDraft) return
+    const t = setTimeout(() => {
+      if (!slugLocked && title === '' && lede === '' && blocks.length === 0) {
+        void deleteArticleDraft(scope, draftKey)
+        return
+      }
+      void saveArticleDraft(scope, draftKey, { title, lede, blocks, palette, savedAt: Date.now() })
+    }, 500)
+    return () => clearTimeout(t)
+  }, [loading, loadErr, dirty, pendingDraft, scope, draftKey, slugLocked, title, lede, blocks, palette])
+
+  function restoreDraft() {
+    const d = pendingDraft
+    if (!d) return
+    setTitle(d.title)
+    setLede(d.lede)
+    setBlocks(d.blocks as EditableBlock[])
+    setPalette(d.palette as ThemePagePalette | undefined)
+    setDirty(true)
+    setPendingDraft(null)
+  }
+
+  function discardDraft() {
+    void deleteArticleDraft(scope, initialSlug ?? NEW_ARTICLE_KEY)
+    setPendingDraft(null)
+  }
 
   // 閃爍區塊:捲到視窗內,1.6 秒後移除樣式。
   useEffect(() => {
@@ -626,6 +708,9 @@ export function ArticleEditor({
     latestRef.current.slug = finalSlug
     setSlug(finalSlug)
     setDirty(false)
+    // 已存到伺服器,本機草稿作廢(新文章的草稿存在 NEW_ARTICLE_KEY,存檔後改用 slug,兩個都清)。
+    void deleteArticleDraft(scope, NEW_ARTICLE_KEY)
+    void deleteArticleDraft(scope, finalSlug)
     return { slug: finalSlug, created }
   }
 
@@ -671,11 +756,6 @@ export function ArticleEditor({
 
   return (
     <div className={styles.editor} data-palette={palette}>
-      <div className={styles.mapPendingNotice}>
-        <MapPin size={13} strokeWidth={2} />
-        左側地圖尚未實作 — 站點卡片 widget 規劃中，目前僅支援段落/圖片/圖組
-      </div>
-
       <div className={styles.topbar}>
         <div className={styles.topbarMeta}>
           {onBack && (
@@ -734,6 +814,21 @@ export function ArticleEditor({
         </div>
       </div>
 
+      {pendingDraft && (
+        <div className={styles.draftBanner} role="status">
+          <span>
+            發現這篇文章在這個瀏覽器有未儲存的草稿(
+            {new Date(pendingDraft.savedAt).toLocaleString('zh-TW', { hour12: false })}
+            ),要還原嗎?
+          </span>
+          <button type="button" className={styles.btn} onClick={restoreDraft}>
+            還原草稿
+          </button>
+          <button type="button" className={styles.btn} onClick={discardDraft}>
+            捨棄
+          </button>
+        </div>
+      )}
       <div className={styles.body}>
       <div className={styles.articlePane}>
         <div className={styles.cover}>
@@ -849,7 +944,7 @@ export function ArticleEditor({
                 先在這裡上傳、管理這篇文章要用的圖片，再回到上方正文用「插入圖片」或「插入圖組」放進內容。
               </div>
             </div>
-            <PhotoManagerBody cfg={cfg} />
+            <PhotoManagerBody cfg={cfg} onStagedChange={(list) => (latestRef.current.staged = list)} />
           </div>
         </div>
       </div>

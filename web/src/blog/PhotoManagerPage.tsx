@@ -7,6 +7,7 @@ import * as api from '../api'
 import type { UploadedPhoto } from '../api'
 import { VARIANT_KINDS, generatePhotoVariants, type PhotoVariantKind } from './photoVariants'
 import { BLOG_PHOTO_RECOGNITION_ENABLED, recognizePhoto } from './photoRecognition'
+import { deleteStagedPhoto, draftScope, loadStagedPhotos, saveStagedPhoto } from './draftStore'
 import { ErrorBanner, errMsg } from '../AppCommon'
 import { Button } from '../components/Button'
 import { PhotoFocalEditor } from './PhotoFocalEditor'
@@ -154,7 +155,14 @@ export function PhotoManagerContent({
 // 這個檔案裡(而非搬去 ArticleEditor.tsx 或另開新檔案)是因為它依賴的
 // UploadedPhoto/api.* 呼叫、POLLING_* 常數都定義在這個檔案作用域內,
 // 搬動反而要跟著搬一整組依賴,維持原地 export 改動範圍最小。
-export function PhotoManagerBody({ cfg }: { cfg: api.ClientConfig }) {
+export function PhotoManagerBody({
+  cfg,
+  onStagedChange,
+}: {
+  cfg: api.ClientConfig
+  // onStagedChange:待上傳區內容變動時回報(檔名與辨識備註),文章編輯器的 AI 工具 list_photos 靠它讀到尚未上傳的圖。
+  onStagedChange?: (list: { key: string; filename: string; note?: string }[]) => void
+}) {
   const [photos, setPhotos] = useState<UploadedPhoto[]>([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
@@ -172,6 +180,9 @@ export function PhotoManagerBody({ cfg }: { cfg: api.ClientConfig }) {
   const [recognizing, setRecognizing] = useState<Set<string>>(new Set())
   const stagedRef = useRef<StagedPhoto[]>([])
   stagedRef.current = staged
+  // 待上傳圖片的本機草稿(IndexedDB,見 draftStore.ts):選圖後立刻存,重新整理/關掉分頁再回來會還原。
+  const draftScopeKey = draftScope(cfg.token)
+  const [restoredCount, setRestoredCount] = useState(0)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -190,6 +201,37 @@ export function PhotoManagerBody({ cfg }: { cfg: api.ClientConfig }) {
   useEffect(() => {
     load()
   }, [load])
+
+  const onStagedChangeRef = useRef(onStagedChange)
+  onStagedChangeRef.current = onStagedChange
+  useEffect(() => {
+    onStagedChangeRef.current?.(staged.map((p) => ({ key: p.key, filename: p.file.name, note: p.note })))
+  }, [staged])
+  // 卸載時清空,避免編輯器還留著已不存在的待上傳清單。
+  useEffect(() => () => onStagedChangeRef.current?.([]), [])
+
+  // 還原上次沒上傳完的待上傳圖片。以 key 去重(StrictMode 重複掛載、或還原期間使用者已選了新圖都不會重複)。
+  useEffect(() => {
+    let cancelled = false
+    loadStagedPhotos(draftScopeKey).then((drafts) => {
+      if (cancelled || drafts.length === 0) return
+      const have = new Set(stagedRef.current.map((p) => p.key))
+      const fresh = drafts.filter((d) => !have.has(d.key))
+      if (fresh.length === 0) return
+      const items: StagedPhoto[] = fresh.map((d) => ({
+        key: d.key,
+        file: d.file,
+        variants: d.variants,
+        previewUrl: URL.createObjectURL(d.variants.thumbnail),
+        note: d.note,
+      }))
+      setStaged((prev) => [...items, ...prev])
+      setRestoredCount(items.length)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [draftScopeKey])
 
   // 卸載時清掉未完成的輪詢計時器,避免元件卸載後還觸發 setState。
   useEffect(() => {
@@ -328,6 +370,7 @@ export function PhotoManagerBody({ cfg }: { cfg: api.ClientConfig }) {
             previewUrl: URL.createObjectURL(variants.thumbnail),
           }
           setStaged((prev) => [...prev, item])
+          void saveStagedPhoto(draftScopeKey, { key: item.key, file, variants, savedAt: Date.now() })
         } catch (e) {
           failures.push(`${file.name}: ${errMsg(e)}`)
         }
@@ -348,6 +391,8 @@ export function PhotoManagerBody({ cfg }: { cfg: api.ClientConfig }) {
     try {
       const note = await recognizePhoto(item.variants.llm)
       setStaged((prev) => prev.map((p) => (p.key === key ? { ...p, note, recognizing: false } : p)))
+      // 辨識結果一併存進草稿,重新整理後不必重辨(也不必再花一次辨識額度)。
+      void saveStagedPhoto(draftScopeKey, { key, file: item.file, variants: item.variants, note, savedAt: Date.now() })
     } catch (e) {
       setErr(`辨識失敗:${errMsg(e)}`)
       setStaged((prev) => prev.map((p) => (p.key === key ? { ...p, recognizing: false } : p)))
@@ -355,6 +400,7 @@ export function PhotoManagerBody({ cfg }: { cfg: api.ClientConfig }) {
   }
 
   function removeStaged(key: string) {
+    void deleteStagedPhoto(draftScopeKey, key)
     setStaged((prev) => {
       const hit = prev.find((p) => p.key === key)
       if (hit) URL.revokeObjectURL(hit.previewUrl)
@@ -483,6 +529,11 @@ export function PhotoManagerBody({ cfg }: { cfg: api.ClientConfig }) {
         />
       </div>
 
+      {restoredCount > 0 && staged.length > 0 && (
+        <div className="empty" style={{ marginBottom: 8 }}>
+          已還原上次尚未上傳的 {restoredCount} 張圖片(只存在這個瀏覽器,按「上傳」才會送到伺服器)。
+        </div>
+      )}
       {staged.length > 0 && (
         <div className={styles.grid} style={{ marginBottom: 16 }}>
           {staged.map((item) => (

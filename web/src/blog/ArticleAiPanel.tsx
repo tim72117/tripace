@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { ArrowUp, X } from 'lucide-react'
 import { AgentBridge } from '@onagent/bridge'
+import ReactMarkdown from 'react-markdown'
 import { toAgentBridgeTools } from '../sdk-proposals/toAgentBridgeTools'
 import { createArticleTools, type ArticleEditorHandle, type ArticleState } from './articleTools'
 import styles from './ArticleEditor.module.css'
@@ -162,7 +163,13 @@ export function ArticleAiPanel({
         )}
         {lines.map((l, i) => (
           <div key={i} className={`${styles.aiLine} ${styles[`aiLine_${l.role}`]}`}>
-            {l.text}
+            {l.role === 'assistant' ? (
+              <div className={styles.aiMd}>
+                <ReactMarkdown>{l.text}</ReactMarkdown>
+              </div>
+            ) : (
+              l.text
+            )}
           </div>
         ))}
         {busy && (
