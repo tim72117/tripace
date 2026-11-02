@@ -1,4 +1,4 @@
-import { useState, type ReactNode, type Ref } from 'react'
+import { useCallback, useState, type ReactNode, type Ref } from 'react'
 import { ComposerSlotContext, OVERLAY_SLOT, slotAttr } from './overlayDom'
 // OverlayShell——手機版「地圖加疊加 UI」外殼的共用實作。/ai-plan(planning/preview/phone/PlanOverlayLayout)
 // 與登入後手機版(src/phone/PlanOverlayLayout)、登入後桌面版(src/desktop/PlanOverlayLayout)各寫一份幾乎相同的程式,現在相同的部分收在這裡:
@@ -67,6 +67,14 @@ export function OverlayShell({
   const [composerSlotEl, setComposerSlotEl] = useState<HTMLDivElement | null>(null)
   const [overlayEl, setOverlayEl] = useState<HTMLDivElement | null>(null)
   const [panelEl, setPanelEl] = useState<HTMLDivElement | null>(null)
+  // 包一層再當 ref 傳:React 19 會把 ref callback 的回傳值當成卸載時的清理函式,直接傳外部 callback 時
+  // 卸載就不再以 null 呼叫它(外部拿不到「元素已移除」)。穩定的 callback 也避免每次渲染重複呼叫。
+  const controlsSlotRef = useCallback(
+    (el: HTMLDivElement | null) => {
+      onControlsSlotChange?.(el)
+    },
+    [onControlsSlotChange],
+  )
 
   return (
     <ComposerSlotContext.Provider value={composerSlotEl}>
@@ -76,7 +84,7 @@ export function OverlayShell({
         </div>
       )}
       {showControlsSlot && (
-        <div {...slotAttr(OVERLAY_SLOT.controlsSlot)} className={classNames.controlsSlot} ref={onControlsSlotChange} />
+        <div {...slotAttr(OVERLAY_SLOT.controlsSlot)} className={classNames.controlsSlot} ref={controlsSlotRef} />
       )}
       <div {...slotAttr(OVERLAY_SLOT.overlay)} className={classNames.overlay} hidden={!open} ref={setOverlayEl}>
         {overlayStart}

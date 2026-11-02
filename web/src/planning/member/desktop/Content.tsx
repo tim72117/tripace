@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { Activity, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useResolvedTheme } from '../../../hooks/useResolvedTheme'
 import { Route, RouteOff, X } from 'lucide-react'
@@ -842,7 +842,7 @@ export function Content(props: ContentProps) {
               正下方——沒有常駐對話欄,這是使用者存取對話的唯一入口
               (見 planPanelOpen 宣告處的說明)。
               疊加層 PlanOverlayLayout 永遠掛載,只用 open={planPanelVisible}
-              (hidden)隱藏——使用者明確要求桌面版也改成常駐掛載,對齊手機版
+              (hidden)隱藏;切到部落格時由 Activity 暫停(不卸載,見下方)——使用者明確要求桌面版也改成常駐掛載,對齊手機版
               planning/member/phone/Content.tsx 的 chatElement 同一套「永遠
               掛載、只切換顯示」設計,避免規劃面板每次開關都讓內容卸載重掛、
               WebSocket 重新連線(原本 {planPanelOpen && (...)} 這種
@@ -862,13 +862,18 @@ export function Content(props: ContentProps) {
               「不要跟 trip 有關聯」「共用同一份,兩處看到一樣的內容」),
               切換旅程不該讓它重新掛載、清掉正在進行的規劃。(原本還有獨立頁面 /trip-plan 與這張
               規劃面板共用同一條時間軸,該頁面已於 2026-10-23 移除。) */}
+          {/* 切到 main-replace(部落格 blog/blog-editor)時用 React 19.2 的 <Activity mode="hidden"> 暫停規劃端:
+              地圖與規劃 AI 面板(LivePlanLayer)不卸載、state 與 DOM 保留,但所有 effect 會執行 cleanup
+              (AgentBridge 連線、計時器、訂閱、地圖實例都停止/釋放),隱藏期間的更新延後處理;切回規劃時 effect 重新啟動。
+              注意:只有寫在 effect 裡的東西會停,render 期間或模組層級建立的資源 Activity 管不到。 */}
+          <Activity mode={panelSpec?.slot === 'main-replace' ? 'hidden' : 'visible'}>
           <PlanOverlayLayout
             safeAreaRef={safeAreaRef}
             passThrough
             // mapBackground:地圖放進疊加層的 map-layer 插槽(與 /ai-plan、登入後手機版同一套骨架)。
-            // main-replace slot 取代整個主顯示區時沒有地圖,傳 undefined 就不渲染 map-layer。
+            // 部落格(main-replace)時整個疊加層由外層 Activity 暫停,地圖不再需要在這裡特別排除。
             mapBackground={
-              panelSpec?.slot === 'main-replace' ? undefined : (
+              (
                 <>
               {/* PlanMap 這個包裝元件已退役(見 useMapState.ts
                     的完整說明)——原本它只做兩件事:持有城市搜尋/旅程座標
@@ -993,8 +998,8 @@ export function Content(props: ContentProps) {
                 </>
               )
             }
-            // open:main-replace slot(blog/blog-editor)取代整個主顯示區,底下沒有地圖可疊,
-            // 用 planPanelVisible 隱藏 overlay(元件仍掛載,不重建 WebSocket,見 planPanelOpen 說明)。
+            // open:規劃端內開關面板用 planPanelVisible 隱藏(元件仍掛載,不重建 WebSocket,見 planPanelOpen 說明);
+            // main-replace(blog/blog-editor)時由外層 Activity 暫停。
             open={planPanelVisible}
             // shifted:搜尋結果側欄同時顯示時往左推,避免兩者疊在一起。
             shifted={geoHotelSidebarVisible}
@@ -1058,6 +1063,7 @@ export function Content(props: ContentProps) {
               />
             </PlanDataProvider>
           </PlanOverlayLayout>
+          </Activity>
       </PlanLayout>
       {settingsOpen && (
         <SettingsDialog
