@@ -298,12 +298,18 @@ type contentPageRow struct {
 	// 欄位時不會因為 NOT NULL 約束失敗——這些既有列的 title 快照會是
 	// 空字串,直到下一次呼叫 UpdateContentPageContent 才會被回填成
 	// 正確值(見該方法的完整說明),這是刻意接受的過渡狀態。
-	Title     string    `gorm:"column:title;not null;default:''"`
-	Content   string    `gorm:"column:content;not null"`
-	Status    string    `gorm:"column:status;not null;default:draft"`
-	UpdatedBy string    `gorm:"column:updated_by"`
-	CreatedAt time.Time `gorm:"column:created_at;not null"`
-	UpdatedAt time.Time `gorm:"column:updated_at;not null"`
+	Title     string `gorm:"column:title;not null;default:''"`
+	Content   string `gorm:"column:content;not null"`
+	Status    string `gorm:"column:status;not null;default:draft"`
+	UpdatedBy string `gorm:"column:updated_by"`
+	// PublishedAt——第一次發布的時間(之後重複發布、改回草稿都不變動),
+	// 供公開文章/作者頁/首頁依發布時間排序。可為 null:此欄位新增前
+	// 就已存在的資料沒有值,對外時退回 CreatedAt(見
+	// model.ContentPage.EffectivePublishedAt)。AutoMigrate 會自動
+	// ADD COLUMN,nullable 欄位不需要 default。
+	PublishedAt *time.Time `gorm:"column:published_at"`
+	CreatedAt   time.Time  `gorm:"column:created_at;not null"`
+	UpdatedAt   time.Time  `gorm:"column:updated_at;not null"`
 }
 
 func (contentPageRow) TableName() string { return "content_pages" }

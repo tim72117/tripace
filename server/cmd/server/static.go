@@ -54,6 +54,11 @@ var knownRoutePatterns = []*regexp.Regexp{
 	// 對應路由與 web/src/blog/BlogArticlePage.tsx 的完整說明)——取代原本
 	// 固定的 /demo/theme-page demo 路徑。
 	regexp.MustCompile(`^/u/[^/]+/[^/]+$`),
+	// /u/:handle:作者頁(該作者已發布文章列表);/blog:部落格首頁(跨作者
+	// 最新文章)。兩者與 /blog/photos 並存、互不影響(各自 $ 錨定,
+	// /blog 不會吃掉 /blog/photos,/u/:handle 也不會吃掉 /u/:handle/:slug)。
+	regexp.MustCompile(`^/u/[^/]+$`),
+	regexp.MustCompile(`^/blog$`),
 	// /blog/photos:部落客圖片管理頁(2026-10 新增,見
 	// web/src/blog/PhotoManagerPage.tsx 的完整說明)——需要登入才能實際
 	// 使用,但路由本身跟 /app 等既有頁面一樣不攔截訪客(頁面內部

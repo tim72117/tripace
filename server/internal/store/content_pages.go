@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"sort"
 	"strings"
 
 	"github.com/tim72117/tripace/internal/model"
@@ -24,15 +25,16 @@ func newContentPageID() string {
 
 func toContentPage(r contentPageRow) model.ContentPage {
 	return model.ContentPage{
-		ID:        r.ID,
-		OwnerID:   r.OwnerID,
-		Slug:      r.Slug,
-		Title:     r.Title,
-		Content:   r.Content,
-		Status:    r.Status,
-		UpdatedBy: r.UpdatedBy,
-		CreatedAt: r.CreatedAt,
-		UpdatedAt: r.UpdatedAt,
+		ID:          r.ID,
+		OwnerID:     r.OwnerID,
+		Slug:        r.Slug,
+		Title:       r.Title,
+		Content:     r.Content,
+		Status:      r.Status,
+		UpdatedBy:   r.UpdatedBy,
+		PublishedAt: r.PublishedAt,
+		CreatedAt:   r.CreatedAt,
+		UpdatedAt:   r.UpdatedAt,
 	}
 }
 
@@ -253,6 +255,10 @@ func (s *Store) UpdateContentPageContent(ownerID, slug, content, updatedBy strin
 // 或 "published")——供 CLI content-page publish/unpublish 使用,獨立於
 // UpdateContentPageContent,理由見該方法的完整說明。(ownerID, slug)
 // 不存在時回傳 ErrNotFound,理由同 UpdateContentPageContent。
+//
+// 發布時 published_at 為空才設成 now:重複發布不更新(公開排序與顯示的
+// 發布日不該因為重按發布而跳動),改回草稿也不清除(再發布時沿用第一次
+// 的時間)。
 func (s *Store) SetContentPageStatus(ownerID, slug, status string) error {
 	res := s.db.Model(&contentPageRow{}).
 		Where("owner_id = ? AND slug = ?", ownerID, slug).
@@ -263,7 +269,56 @@ func (s *Store) SetContentPageStatus(ownerID, slug, status string) error {
 	if res.RowsAffected == 0 {
 		return ErrNotFound
 	}
+	if status == "published" {
+		// 獨立一次條件更新(published_at IS NULL)而非讀後寫,併發重複發布
+		// 時也只有一個會生效。
+		if err := s.db.Model(&contentPageRow{}).
+			Where("owner_id = ? AND slug = ? AND published_at IS NULL", ownerID, slug).
+			Update("published_at", now()).Error; err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+// ListPublishedContentPagesByOwner 回傳指定 owner 底下 status=published
+// 的文章,依發布時間(published_at,null 退回 created_at)新到舊——供
+// 作者頁使用。排序在記憶體做:null 退回規則用 SQL COALESCE 也行,但
+// 單一作者的文章量很小,這樣最直接且跨 driver 一致。
+func (s *Store) ListPublishedContentPagesByOwner(ownerID string) ([]model.ContentPage, error) {
+	var rows []contentPageRow
+	if err := s.db.Where("owner_id = ? AND status = ?", ownerID, "published").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return sortedPublished(rows), nil
+}
+
+// ListPublishedBlogContentPages 回傳所有「已發布且 owner 有 blog_profile」
+// 的文章(跨作者),依發布時間新到舊,最多 limit 筆——供部落格首頁。
+// 系統帳號(owner_id=”)的城市介紹頁沒有 profile,自然被 JOIN 排除。
+func (s *Store) ListPublishedBlogContentPages(limit int) ([]model.ContentPage, error) {
+	var rows []contentPageRow
+	if err := s.db.
+		Where("status = ? AND owner_id IN (SELECT user_id FROM blog_profiles)", "published").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	out := sortedPublished(rows)
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+func sortedPublished(rows []contentPageRow) []model.ContentPage {
+	out := make([]model.ContentPage, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, toContentPage(r))
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		return out[i].EffectivePublishedAt().After(out[j].EffectivePublishedAt())
+	})
+	return out
 }
 
 // DeleteContentPage 刪除一筆主題介紹頁/部落格文章內容。(ownerID, slug)

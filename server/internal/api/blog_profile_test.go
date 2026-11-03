@@ -221,3 +221,18 @@ func TestBlogProfileSet_handle格式驗證(t *testing.T) {
 		}
 	}
 }
+
+// TestBlogProfileSet_保留字不可當handle 驗證與 /v1/blog/profile 等字面路由
+// 衝突的字詞被擋下(不分大小寫)。
+func TestBlogProfileSet_保留字不可當handle(t *testing.T) {
+	f := newBlogProfileFixture(t)
+	for _, handle := range []string{"profile", "articles", "photos", "Profile", "PHOTOS"} {
+		resp := f.do(t, "POST", "/v1/blog/profile", map[string]any{"handle": handle}, http.StatusBadRequest)
+		errBody, ok := resp["error"].(map[string]any)
+		if !ok || errBody["code"] != "invalid_input" || errBody["message"] != "這個 handle 是系統保留字" {
+			t.Fatalf("handle=%q 應回保留字錯誤,got: %v", handle, resp)
+		}
+	}
+	// 只是包含保留字的 handle 仍可使用。
+	f.do(t, "POST", "/v1/blog/profile", map[string]any{"handle": "my-profile"}, http.StatusCreated)
+}

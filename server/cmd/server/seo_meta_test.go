@@ -770,3 +770,18 @@ func TestApplySEOMeta_BlogArticlePathInjectsHeroImageAsOGImage(t *testing.T) {
 		t.Error("輸出仍包含首頁預設的 og-image.png,hero 圖的取代沒有生效")
 	}
 }
+
+// /u/:handle(作者頁)與 /blog(部落格首頁)是合法前端路由,且不影響既有的
+// /blog/photos、/u/:handle/:slug;多一層或結尾斜線的不是。
+func TestIsKnownRoute_BlogAuthorAndIndex(t *testing.T) {
+	for _, p := range []string{"/u/alice", "/blog", "/blog/photos", "/u/alice/post"} {
+		if !isKnownRoute(p) {
+			t.Errorf("%s 應該是合法路由", p)
+		}
+	}
+	for _, p := range []string{"/u", "/u/", "/blog/", "/blog/other", "/u/a/b/c"} {
+		if isKnownRoute(p) {
+			t.Errorf("%s 不該是合法路由", p)
+		}
+	}
+}

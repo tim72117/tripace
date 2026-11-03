@@ -52,8 +52,17 @@ func validateBlogProfileHandle(handle string) string {
 	if !handlePattern.MatchString(handle) {
 		return "handle 只能包含英數字、底線(_)或連字符(-)"
 	}
+	// 保留字:會跟 /v1/blog/profile 等字面路由衝突(不分大小寫比對,
+	// 避免 Profile 之類在不分大小寫的場合造成混淆)。
+	if reservedBlogHandles[strings.ToLower(handle)] {
+		return "這個 handle 是系統保留字"
+	}
 	return ""
 }
+
+// reservedBlogHandles 是不可當 handle 的字詞,對應 /v1/blog/{handle} 與
+// 同層字面路由(profile、articles、photos)。
+var reservedBlogHandles = map[string]bool{"profile": true, "articles": true, "photos": true}
 
 // handleBlogProfileGet 處理 GET /v1/blog/profile——查詢登入者自己的
 // 部落客設定。查無記錄(使用者還沒設定過)時回 404,讓前端據此顯示

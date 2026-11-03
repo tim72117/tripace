@@ -257,12 +257,24 @@ type ContentPage struct {
 	// 但不該為此每次都把整份 content 傳輸/解析一次——這是一個查詢效能
 	// 優化用的反正規化欄位,不是真正的資料來源(真正的資料來源永遠是
 	// Content 裡的 title,這個欄位只是它的唯讀快照)。
-	Title     string    `json:"title,omitempty"`
-	Content   string    `json:"-"`
-	Status    string    `json:"status"`
-	UpdatedBy string    `json:"updatedBy,omitempty"`
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	Title     string `json:"title,omitempty"`
+	Content   string `json:"-"`
+	Status    string `json:"status"`
+	UpdatedBy string `json:"updatedBy,omitempty"`
+	// PublishedAt 不進 JSON(MarshalJSON 也不輸出),維持既有回應形狀;
+	// 只供公開端點取用,對外請用 EffectivePublishedAt。
+	PublishedAt *time.Time `json:"-"`
+	CreatedAt   time.Time  `json:"createdAt"`
+	UpdatedAt   time.Time  `json:"updatedAt"`
+}
+
+// EffectivePublishedAt 回傳對外顯示的發布時間;舊資料 PublishedAt 為
+// null 時退回 CreatedAt。
+func (t ContentPage) EffectivePublishedAt() time.Time {
+	if t.PublishedAt != nil {
+		return *t.PublishedAt
+	}
+	return t.CreatedAt
 }
 
 // ItineraryPage——範例行程內容(對齊「AI 排過的主題行程展示」構想,見

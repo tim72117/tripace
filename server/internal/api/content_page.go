@@ -45,6 +45,7 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/tim72117/tripace/internal/adminidentity"
 	"github.com/tim72117/tripace/internal/store"
@@ -522,5 +523,20 @@ func (s *Server) handlePublicBlogArticle(w http.ResponseWriter, r *http.Request)
 		writeErr(w, http.StatusInternalServerError, "query_failed", err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, page)
+	// 保留 ContentPage 既有 JSON 形狀(自訂 MarshalJSON),再合併 author 與
+	// publishedAt 兩個頂層欄位:不能用內嵌 struct,方法提升會讓外層
+	// 序列化只剩 ContentPage 的輸出而吃掉新欄位。
+	base, err := json.Marshal(page)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, "marshal_failed", err.Error())
+		return
+	}
+	merged := map[string]json.RawMessage{}
+	if err := json.Unmarshal(base, &merged); err != nil {
+		writeErr(w, http.StatusInternalServerError, "marshal_failed", err.Error())
+		return
+	}
+	merged["author"], _ = json.Marshal(authorOf(profile))
+	merged["publishedAt"], _ = json.Marshal(page.EffectivePublishedAt().UTC().Format(time.RFC3339))
+	writeJSON(w, http.StatusOK, merged)
 }

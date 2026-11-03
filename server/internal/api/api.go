@@ -832,6 +832,12 @@ func (s *Server) Routes() http.Handler {
 	// 需要先查 blog_profiles 把 handle 解析成 UserID,才能查到正確的
 	// 那一篇文章(見 handlePublicBlogArticle 的完整說明)。
 	mux.HandleFunc("GET /v1/blog/{handle}/{slug}", s.handlePublicBlogArticle)
+	// 作者頁與部落格首頁(blog_public.go)——同樣免登入、只回已發布文章。
+	// /v1/blog/{handle} 與下方 /v1/blog/profile、/v1/blog/articles、
+	// /v1/blog/photos 字面路由並存(字面較具體者優先),所以這三個字
+	// 被列為 handle 保留字(validateBlogProfileHandle)。
+	mux.HandleFunc("GET /v1/blog/{handle}", s.handlePublicBlogAuthor)
+	mux.HandleFunc("GET /v1/blog-index", s.handlePublicBlogIndex)
 
 	// 範例行程(itinerary_page.go)公開讀取——「AI 排過的主題行程展示」
 	// /itineraries 清單頁跟詳細頁會打這兩支,無需登入,只回傳
@@ -887,6 +893,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /v1/blog/articles/{slug}", s.handleMyContentPageGet)
 	mux.HandleFunc("PUT /v1/blog/articles/{slug}", s.handleMyContentPageUpdate)
 	mux.HandleFunc("PATCH /v1/blog/articles/{slug}/publish", s.handleMyContentPagePublish)
+	mux.HandleFunc("DELETE /v1/blog/articles/{slug}", s.handleMyContentPageDelete)
 
 	// cli-auth — CLI(cmd/cli)瀏覽器登入流程(`tripace-cli login --web`),
 	// 換回一個能通過下面 internalAuth 的 JWT。start/exchange 不需登入:

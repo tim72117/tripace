@@ -72,9 +72,15 @@ func (s *Store) TestSetUploadedPhotoCreatedAt(id string, createdAt time.Time) er
 	return nil
 }
 
-
 // SetCachedPlaceDetailsFetchedAtForTest 直接改寫 place_details_cache 一列的
 // fetched_at——供測試模擬「這筆快取是 N 小時前寫的」,不需要真的等時間過去。
 func (s *Store) SetCachedPlaceDetailsFetchedAtForTest(placeID string, at time.Time) {
 	_ = s.db.Model(&placeDetailsCacheRow{}).Where("place_id = ?", placeID).Update("fetched_at", at.UTC()).Error
+}
+
+// SetContentPagePublishedAtForTest 直接改寫文章的 published_at(nil 代表
+// 清成 null)——供測試模擬「published_at 欄位新增前就已發布的舊資料」,
+// 以及指定不同的發布時間來驗證排序。
+func (s *Store) SetContentPagePublishedAtForTest(ownerID, slug string, at *time.Time) {
+	_ = s.db.Model(&contentPageRow{}).Where("owner_id = ? AND slug = ?", ownerID, slug).UpdateColumn("published_at", at).Error
 }
