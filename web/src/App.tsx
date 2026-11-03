@@ -124,6 +124,10 @@ const BlogArticlePage = lazy(() => import('./blog/BlogArticlePage').then((m) => 
 // 裁切焦點(見該檔案開頭的完整說明)——後端上傳/焦點 API 見
 // server/internal/api/blog_photo.go,與 BlogArticlePage 同屬「部落格
 // 發文」功能,但這是獨立的圖片管理頁,不涉及文章內容渲染。
+// BlogAuthorPage(/u/:handle 作者頁)與 BlogIndexPage(/blog 部落格首頁):免登入的已發布文章列表,見 blog/BlogPublicPages.tsx。
+// 務必同步 server/cmd/server/static.go 的 knownRoutePatterns(`^/u/[^/]+$`、`^/blog$`)。
+const BlogAuthorPage = lazy(() => import('./blog/BlogPublicPages').then((m) => ({ default: m.BlogAuthorPage })))
+const BlogIndexPage = lazy(() => import('./blog/BlogPublicPages').then((m) => ({ default: m.BlogIndexPage })))
 const PhotoManagerPage = lazy(() => import('./blog/PhotoManagerPage').then((m) => ({ default: m.PhotoManagerPage })))
 // LayoutGalleryPage:/dev/layouts 路由,開發用的版型目錄頁(2026-10 新增,
 // 見該檔案開頭的完整說明)——陳列 BlogArticle.css 目前支援的所有版型,
@@ -288,6 +292,8 @@ export function App() {
               的既有模式)取出 :handle/:slug 兩個路徑參數,轉交給
               BlogArticlePage。 */}
           <Route path="/u/:handle/:slug" element={<BlogArticleRoute />} />
+          <Route path="/u/:handle" element={<BlogAuthorRoute />} />
+          <Route path="/blog" element={<BlogIndexPage />} />
           {/* /blog/photos:部落客上傳圖片管理頁(見 blog/PhotoManagerPage.tsx
               開頭的完整說明)——需登入:訪客可到達這個網址,頁面內自己用
               useAppState() 判斷 isGuest 並內嵌登入表單,不是擋下或導轉。這個專案沒有
@@ -450,6 +456,11 @@ function PublicTokenRoute() {
 // (Router context 內)呼叫。useParams() 的型別允許 handle/slug 回傳
 // undefined(即使路由命中時理論上一定有值),用 ?? '' 處理這個型別上的
 // 邊界情況,寫法對齊 PublicTokenRoute 的既有慣例。
+function BlogAuthorRoute() {
+  const { handle } = useParams<{ handle: string }>()
+  return <BlogAuthorPage handle={handle ?? ''} />
+}
+
 function BlogArticleRoute() {
   const { handle, slug } = useParams<{ handle: string; slug: string }>()
   return <BlogArticlePage handle={handle ?? ''} slug={slug ?? ''} />

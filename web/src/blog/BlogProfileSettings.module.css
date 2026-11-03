@@ -4,6 +4,7 @@
    縮圖卡片網格)。 */
 
 .section {
+  color: var(--color-dark);
   max-width: 480px;
   margin: 0 0 28px;
   padding: 16px;
@@ -51,4 +52,22 @@
   background: var(--ios-bg);
   color: inherit;
   font-size: 14px;
+}
+
+.warn {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ios-red, #d9534f);
+}
+.avatarRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+.avatarPreview {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
 }

@@ -1,13 +1,17 @@
-import { useEffect, useRef, useState } from 'react'
+import { Activity, useEffect, useRef, useState } from 'react'
+import { useLocation } from 'react-router-dom'
 import { useResolvedTheme } from '../../../hooks/useResolvedTheme'
 import { Helmet } from 'react-helmet-async'
-import { Compass, ListPlus, Sparkles } from 'lucide-react'
+import { ArrowLeft, BookOpen, Compass, ListPlus, Sparkles } from 'lucide-react'
 import { useTripEntriesMirror } from '../../../hooks/useTripEntriesMirror'
 import { type ContentProps } from '../../../AppCommon'
 import { useIsDesktop } from '../../../hooks/useIsDesktop'
 import { useTripsState } from '../../../hooks/useTripsState'
 import { LoginForm, LoginCard } from '../../../home/LoginForm'
-import { TIMELINE_ENABLED, ROUTE_LINE_ENABLED } from '../../../DesktopShared'
+import { TIMELINE_ENABLED, ROUTE_LINE_ENABLED, BLOG_ENABLED, BLOG_EDITOR_ENABLED } from '../../../DesktopShared'
+import { PhotoManagerContent } from '../../../blog/PhotoManagerPage'
+import { ArticleEditor } from '../../../blog/ArticleEditor'
+import blogStyles from './BlogOverlay.module.css'
 import { Content as DesktopContent } from '../desktop/Content'
 import { SettingsScreen } from '../../../user/SettingsScreen'
 import { TripManageDialog } from '../../../trip/TripManageDialog'
@@ -71,6 +75,15 @@ export function Content(props: ContentProps) {
   const safeAreaRef = useRef<HTMLDivElement>(null)
   const tabBarHeight = useElementHeight(tabBarRef)
   const [inSettings, setInSettings] = useState(false)
+  // 部落格(手機版 2026-11 接上):全螢幕疊加層,底部功能列的「部落格」按鈕開啟。blogView:undefined=列表、
+  // null=新文章編輯器、字串=編輯該 slug。進入時規劃端用 Activity 暫停(連線/計時器/地圖停止),離開再恢復,
+  // 跟桌面版 main-replace 的行為一致。/app/blog、/app/blog/:slug 網址直接進來時初始就開啟(深連結)。
+  const location = useLocation()
+  const blogRoute = /^\/app\/blog(?:\/([^/]+))?\/?$/.exec(location.pathname)
+  const [inBlog, setInBlog] = useState<boolean>(() => BLOG_ENABLED && blogRoute !== null)
+  const [blogView, setBlogView] = useState<string | null | undefined>(() =>
+    BLOG_ENABLED && BLOG_EDITOR_ENABLED && blogRoute?.[1] ? decodeURIComponent(blogRoute[1]) : undefined,
+  )
   // manageTrip:旅程管理彈窗(分享連結/成員/開啟時自動進入,見
   // TripManageModal.tsx)——對齊桌面版 planning/member/desktop/Content.tsx 的同名 state,
   // 原本手機版這幾個功能散落在 PhoneNavDrawer 抽屜(已隨底部常駐導覽列
@@ -292,6 +305,9 @@ export function Content(props: ContentProps) {
     // onClick toggle:規劃面板改成沒有標頭關閉鈕的透明疊加層(見下方 planOverlay),
     // 關閉入口就是這顆 tab 再點一次。
     { key: 'plan-ai', icon: Sparkles, title: '規劃', active: chatSheetOpen, onClick: () => setChatSheetOpen((v) => !v), beta: true },
+    ...(BLOG_ENABLED
+      ? [{ key: 'blog', icon: BookOpen, title: '部落格', active: inBlog, onClick: () => { setBlogView(undefined); setInBlog(true) } }]
+      : []),
   ]
   // visibleStopsView:傳給地圖的站點檢視,規劃面板關閉時整組遮蔽(桌面、手機共用,見 maskPlanStopsView)。
   const visibleStopsView = maskPlanStopsView({ stops, selectedStopId, hoverStopId, hoverTransitPair, askMapView }, chatSheetOpen)
@@ -311,6 +327,7 @@ export function Content(props: ContentProps) {
           才會回報,見該 hook 的完整說明)——這極短暫的空窗期間所有依賴
           這個變數的元件會暫時算成「功能列不存在」,實務上只有一個
           frame 的落差,肉眼看不出來,不需要額外的 loading 態處理。 */}
+      <Activity mode={inBlog ? 'hidden' : 'visible'}>
       <PlanLayout tabBarHeight={tabBarHeight}>
         {/* 規劃地圖:唯一常駐的主畫面(使用者明確要求,見上方
             chatSheetOpen 的說明),不再隨分頁切換卸載重掛
@@ -415,6 +432,30 @@ export function Content(props: ContentProps) {
           editCfg={activeTrip && activeTrip.ownerID === props.user.id ? cfg : undefined}
         />
       </PlanLayout>
+      </Activity>
+      {inBlog && (
+        <div className={blogStyles.overlay} style={{ zIndex: Z_LAYERS.ABOVE_TAB_BAR }}>
+          {blogView === undefined ? (
+            <>
+              <div className={blogStyles.bar}>
+                <button type="button" className={blogStyles.back} onClick={() => setInBlog(false)}>
+                  <ArrowLeft size={16} strokeWidth={2} />
+                  返回地圖
+                </button>
+                <span className={blogStyles.title}>部落格</span>
+              </div>
+              <div className={blogStyles.list}>
+                <PhotoManagerContent
+                  cfg={cfg}
+                  onArticleEdit={BLOG_EDITOR_ENABLED ? (article) => setBlogView(article ? article.slug : null) : undefined}
+                />
+              </div>
+            </>
+          ) : (
+            <ArticleEditor cfg={cfg} slug={blogView} onBack={() => setBlogView(undefined)} />
+          )}
+        </div>
+      )}
       {/* 設定頁:改用具名工廠元件 StandaloneSheet(2026-10,見
           components/PhoneBottomSheet.tsx 的完整說明)——獨立開關、不屬於
           任何堆疊,對齊 trip/phone/TripList.tsx 的既有用法(使用者明確

@@ -5,11 +5,13 @@ import { LoginForm, LoginCard } from '../home/LoginForm'
 import { SiteNavBrand, SiteNavCta, SiteNavThemeToggle } from '../home/SiteNavButtons'
 import * as api from '../api'
 import type { UploadedPhoto } from '../api'
-import { VARIANT_KINDS, generatePhotoVariants, type PhotoVariantKind } from './photoVariants'
+import { VARIANT_KINDS, generatePhotoVariants, imageSize, type PhotoVariantKind } from './photoVariants'
+import type { StagedPhotoView } from './stagedPhotos'
 import { BLOG_PHOTO_RECOGNITION_ENABLED, recognizePhoto } from './photoRecognition'
 import { deleteStagedPhoto, draftScope, loadStagedPhotos, saveStagedPhoto } from './draftStore'
 import { ErrorBanner, errMsg } from '../AppCommon'
 import { Button } from '../components/Button'
+import { useConfirmDialog } from '../components/ConfirmDialog'
 import { PhotoFocalEditor } from './PhotoFocalEditor'
 import { photoDisplayStatus, canEditFocal, objectPositionFor, type FocalPoint } from './photoFocalMath'
 import { BlogProfileSettings } from './BlogProfileSettings'
@@ -59,6 +61,15 @@ interface StagedPhoto {
   // note:選圖後(上傳前)用 llm 縮圖辨識出來的描述,上傳時一併存成備註。
   note?: string
   recognizing?: boolean
+  // width/height:縮圖像素尺寸,供編輯器/AI 判斷直式或橫式(讀不到就沒有)。
+  width?: number
+  height?: number
+}
+
+// StagedController:文章編輯器透過它在「儲存」前把區塊引用到的待上傳圖片真正上傳(見 stagedPhotos.ts)。
+export interface StagedController {
+  // uploadStaged:依序上傳指定 key 的待上傳圖片;單張失敗不中斷,回傳成功的 key → photoId 與失敗清單(檔名與原因)。
+  uploadStaged(keys: string[]): Promise<{ uploaded: Record<string, string>; failed: { key: string; message: string }[] }>
 }
 
 export function PhotoManagerPage() {
@@ -158,10 +169,15 @@ export function PhotoManagerContent({
 export function PhotoManagerBody({
   cfg,
   onStagedChange,
+  onStagedUploaded,
+  controllerRef,
 }: {
   cfg: api.ClientConfig
-  // onStagedChange:待上傳區內容變動時回報(檔名與辨識備註),文章編輯器的 AI 工具 list_photos 靠它讀到尚未上傳的圖。
-  onStagedChange?: (list: { key: string; filename: string; note?: string }[]) => void
+  // onStagedChange:待上傳區內容變動時回報,文章編輯器靠它把待上傳圖片當成可用的圖(含 AI 的 list_photos)。
+  onStagedChange?: (list: StagedPhotoView[]) => void
+  // onStagedUploaded:一張待上傳圖片上傳成功時回報 key 與後端 photoId,編輯器據此把區塊裡的 staged:key 換成真實 id。
+  onStagedUploaded?: (key: string, photoId: string) => void
+  controllerRef?: { current: StagedController | null }
 }) {
   const [photos, setPhotos] = useState<UploadedPhoto[]>([])
   const [loading, setLoading] = useState(true)
@@ -178,6 +194,7 @@ export function PhotoManagerBody({
   const [preparing, setPreparing] = useState(false)
   // recognizing:正在送 onagent 辨識的圖片 id(手動觸發,結果寫進備註,見 handleRecognize)。
   const [recognizing, setRecognizing] = useState<Set<string>>(new Set())
+  const { ask, dialog: confirmDialog } = useConfirmDialog()
   const stagedRef = useRef<StagedPhoto[]>([])
   stagedRef.current = staged
   // 待上傳圖片的本機草稿(IndexedDB,見 draftStore.ts):選圖後立刻存,重新整理/關掉分頁再回來會還原。
@@ -205,10 +222,21 @@ export function PhotoManagerBody({
   const onStagedChangeRef = useRef(onStagedChange)
   onStagedChangeRef.current = onStagedChange
   useEffect(() => {
-    onStagedChangeRef.current?.(staged.map((p) => ({ key: p.key, filename: p.file.name, note: p.note })))
+    onStagedChangeRef.current?.(
+      staged.map((p) => ({
+        key: p.key,
+        filename: p.file.name,
+        note: p.note,
+        previewUrl: p.previewUrl,
+        width: p.width,
+        height: p.height,
+      })),
+    )
   }, [staged])
   // 卸載時清空,避免編輯器還留著已不存在的待上傳清單。
   useEffect(() => () => onStagedChangeRef.current?.([]), [])
+  const onStagedUploadedRef = useRef(onStagedUploaded)
+  onStagedUploadedRef.current = onStagedUploaded
 
   // 還原上次沒上傳完的待上傳圖片。以 key 去重(StrictMode 重複掛載、或還原期間使用者已選了新圖都不會重複)。
   useEffect(() => {
@@ -218,15 +246,20 @@ export function PhotoManagerBody({
       const have = new Set(stagedRef.current.map((p) => p.key))
       const fresh = drafts.filter((d) => !have.has(d.key))
       if (fresh.length === 0) return
-      const items: StagedPhoto[] = fresh.map((d) => ({
-        key: d.key,
-        file: d.file,
-        variants: d.variants,
-        previewUrl: URL.createObjectURL(d.variants.thumbnail),
-        note: d.note,
-      }))
-      setStaged((prev) => [...items, ...prev])
-      setRestoredCount(items.length)
+      Promise.all(fresh.map((d) => imageSize(d.variants.thumbnail))).then((sizes) => {
+        if (cancelled) return
+        const items: StagedPhoto[] = fresh.map((d, i) => ({
+          key: d.key,
+          file: d.file,
+          variants: d.variants,
+          previewUrl: URL.createObjectURL(d.variants.thumbnail),
+          note: d.note,
+          width: sizes[i]?.width,
+          height: sizes[i]?.height,
+        }))
+        setStaged((prev) => [...items, ...prev])
+        setRestoredCount(items.length)
+      })
     })
     return () => {
       cancelled = true
@@ -273,7 +306,7 @@ export function PhotoManagerBody({
   // 失敗時拋出 error,呼叫端(handleFileSelected)決定要不要中斷整批。
   // 縮圖已在選檔時由前端產生(thumbnail/large/llm,見 photoVariants.ts 與 handleFilesPicked),
   // 這裡只負責把原圖與縮圖送上去。
-  async function uploadOneFile(file: File, variants: Record<PhotoVariantKind, Blob>, note?: string) {
+  async function uploadOneFile(file: File, variants: Record<PhotoVariantKind, Blob>, note?: string): Promise<string> {
     const { photoId, uploadUrl, publicUrl } = await api.createPhotoUploadURL(cfg, file.type, note)
 
     const putRes = await fetch(uploadUrl, {
@@ -316,13 +349,60 @@ export function PhotoManagerBody({
     ])
 
     pollUntilSettled(photoId, POLLING_MAX_ATTEMPTS)
+    return photoId
   }
+
+  // uploadStagedByKeys:文章編輯器「儲存」前呼叫,把區塊引用到的待上傳圖片依序上傳。每張成功立刻從待上傳區移除並回報 photoId,
+  // 編輯器會把區塊裡的 staged:key 換掉;某張失敗就丟錯中止(已上傳的保留)。
+  async function uploadStagedByKeys(keys: string[]) {
+    const uploaded: Record<string, string> = {}
+    const failed: { key: string; message: string }[] = []
+    setUploading(true)
+    setErr(null)
+    try {
+      for (const key of keys) {
+        const item = stagedRef.current.find((p) => p.key === key)
+        if (!item) {
+          failed.push({ key, message: '圖片已不在待上傳區(可能被移除了)' })
+          continue
+        }
+        try {
+          const photoId = await uploadOneFile(item.file, item.variants, item.note)
+          uploaded[key] = photoId
+          removeStaged(key)
+          onStagedUploadedRef.current?.(key, photoId)
+        } catch (e) {
+          const msg = errMsg(e)
+          setStaged((prev) => prev.map((p) => (p.key === key ? { ...p, error: msg } : p)))
+          failed.push({ key, message: `${item.file.name}:${msg}` })
+        }
+      }
+    } finally {
+      setUploading(false)
+    }
+    return { uploaded, failed }
+  }
+  if (controllerRef) controllerRef.current = { uploadStaged: uploadStagedByKeys }
+  useEffect(
+    () => () => {
+      if (controllerRef) controllerRef.current = null
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  )
 
   // handleRecognize:手動觸發——使用者按卡片上的「辨識」才送 onagent。圖片取已存在 GCS 的縮圖(優先 llm 1024px,
   // 沒有就用 large、thumbnail),成功後把描述存成備註並更新卡片。失敗顯示錯誤橫幅。
   // 已有備註時先確認,避免蓋掉使用者自己寫的內容。
   async function handleRecognize(photo: UploadedPhoto) {
-    if (photo.note && !window.confirm('這張圖已有備註,要用辨識結果取代嗎?')) return
+    if (photo.note) {
+      const choice = await ask({
+        title: '取代現有備註',
+        message: '這張圖已經有備註,用辨識結果取代嗎?原本的備註會被覆蓋。',
+        choices: [{ id: 'replace', label: '取代備註', variant: 'primary' }],
+      })
+      if (choice !== 'replace') return
+    }
     const variant = ['llm', 'large', 'thumbnail']
       .map((kind) => photo.variants?.find((v) => v.kind === kind))
       .find((v) => v != null)
@@ -363,7 +443,10 @@ export function PhotoManagerBody({
       for (const file of files) {
         try {
           const variants = await generatePhotoVariants(file)
+          const size = await imageSize(variants.thumbnail)
           const item: StagedPhoto = {
+            width: size?.width,
+            height: size?.height,
             key: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
             file,
             variants,
@@ -422,8 +505,9 @@ export function PhotoManagerBody({
         const item = batch[i]
         setUploadProgress({ done: i, total: batch.length })
         try {
-          await uploadOneFile(item.file, item.variants, item.note)
+          const photoId = await uploadOneFile(item.file, item.variants, item.note)
           removeStaged(item.key)
+          onStagedUploadedRef.current?.(item.key, photoId)
         } catch (e) {
           const msg = errMsg(e)
           failures.push(`${item.file.name}: ${msg}`)
@@ -500,6 +584,7 @@ export function PhotoManagerBody({
 
   return (
     <div className={styles.body}>
+      {confirmDialog}
       <ErrorBanner msg={err} />
 
       <div className={styles.toolbar}>

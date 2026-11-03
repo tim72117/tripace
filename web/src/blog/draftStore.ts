@@ -25,6 +25,7 @@ export interface ArticleDraft {
   lede: string
   blocks: unknown[]
   palette?: string
+  heroPhotoId?: string
   savedAt: number
 }
 
@@ -126,6 +127,36 @@ export function loadArticleDraft(scope: string, slugKey: string): Promise<Articl
       req.onsuccess = () => done((req.result as ArticleDraft | undefined) ?? null)
     },
     null,
+  )
+}
+
+export interface ArticleDraftSummary {
+  slugKey: string // 文章 slug,或 NEW_ARTICLE_KEY(尚未儲存的新文章)
+  title: string
+  savedAt: number
+}
+
+// listArticleDrafts:這個 scope 底下所有本機文章草稿的摘要,供文章列表標示「有本機未儲存的草稿」。
+export function listArticleDrafts(scope: string): Promise<ArticleDraftSummary[]> {
+  const prefix = `${scope}:`
+  return run<ArticleDraftSummary[]>(
+    STORE_ARTICLES,
+    'readonly',
+    (store, done) => {
+      const out: ArticleDraftSummary[] = []
+      const req = store.openCursor(IDBKeyRange.bound(prefix, prefix + '￿'))
+      req.onsuccess = () => {
+        const cur = req.result
+        if (cur) {
+          const d = cur.value as ArticleDraft
+          out.push({ slugKey: String(cur.key).slice(prefix.length), title: d.title ?? '', savedAt: d.savedAt })
+          cur.continue()
+        } else {
+          done(out)
+        }
+      }
+    },
+    [],
   )
 }
 

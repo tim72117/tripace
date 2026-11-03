@@ -440,24 +440,49 @@
   border-bottom: 1px solid var(--line-soft);
   display: flex;
   align-items: flex-end;
-  cursor: pointer;
   overflow: hidden;
 }
-.coverEditHint {
+/* 封面圖:滿版 cover 鋪底,再蓋一層由上到下漸暗的遮罩讓標題可讀;動作鈕與標題疊在最上層。 */
+.coverImg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.coverShade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(43,36,32,0) 30%, rgba(43,36,32,0.78) 100%);
+}
+.coverActions {
   position: absolute;
   top: 16px;
   right: 16px;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 5px 12px;
-  border-radius: 14px;
-  background: rgba(43,36,32,0.4);
-  color: #fff;
+  z-index: 2;
+  display: flex;
+  gap: 8px;
   opacity: 0;
   transition: opacity 0.15s;
 }
-.cover:hover .coverEditHint { opacity: 1; }
+.cover:hover .coverActions,
+.coverActions:focus-within { opacity: 1; }
+@media (hover: none) { .coverActions { opacity: 1; } }
+.coverBtn {
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 14px;
+  background: rgba(43,36,32,0.55);
+  color: #fff;
+  cursor: pointer;
+}
+.coverBtn:hover { background: rgba(43,36,32,0.75); }
 .coverCaption {
+  position: relative;
+  z-index: 1;
   /* padding-inline 對齊 .articleInner 的 48px,讓封面標題跟下方正文
      左緣切齊,理由同上方 .articleInner 加寬的說明。 */
   padding: 28px 48px 26px;
@@ -1414,3 +1439,14 @@
   font-size: 12.5px;
 }
 .draftBanner > span { flex: 1 1 auto; min-width: 200px; }
+
+/* contentEditable 欄位的提示文字:用 CSS 偽元素顯示,不是真的文字節點——否則提示文字會被當成內容輸入、
+   blur 時被存回標題/導言(連 slug 都被污染)。欄位有內容時 :empty 不成立,提示自然消失。預覽模式不顯示。 */
+.editor [data-placeholder]:empty::before {
+  content: attr(data-placeholder);
+  opacity: 0.45;
+  pointer-events: none;
+}
+.editor [contenteditable="false"][data-placeholder]:empty::before {
+  content: none;
+}

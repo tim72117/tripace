@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import * as api from '../api'
 import { ErrorBanner, errMsg } from '../AppCommon'
 import { Button } from '../components/Button'
+import { PhotoPickerModal } from './PhotoPickerModal'
+import { useConfirmDialog } from '../components/ConfirmDialog'
 import styles from './BlogProfileSettings.module.css'
 
 // BlogProfileSettings——「設定你的部落格身份」區塊(handle + 頭像網址,
@@ -25,6 +27,12 @@ export function BlogProfileSettings({ cfg }: { cfg: api.ClientConfig }) {
   // 文案,upsert 語意本身後端已經處理好,前端不需要為此切換不同的
   // API 呼叫。
   const [hasProfile, setHasProfile] = useState(false)
+  // savedHandle:目前已儲存在後端的 handle。改成別的 handle 會讓所有已發布文章的舊網址(/u/舊handle/...)失效,
+  // 所以改動時要警告並在送出前再確認。
+  const [savedHandle, setSavedHandle] = useState('')
+  // 頭像從素材庫挑:開啟時才抓清單(平常用不到,不為它多打一次請求)。
+  const [avatarPicker, setAvatarPicker] = useState<api.UploadedPhoto[] | null>(null)
+  const [avatarLoading, setAvatarLoading] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -34,6 +42,7 @@ export function BlogProfileSettings({ cfg }: { cfg: api.ClientConfig }) {
         const profile = await api.fetchMyBlogProfile(cfg)
         if (cancelled) return
         setHandle(profile.handle)
+        setSavedHandle(profile.handle)
         setAvatarUrl(profile.avatarUrl ?? '')
         setHasProfile(true)
       } catch (e) {
@@ -56,14 +65,40 @@ export function BlogProfileSettings({ cfg }: { cfg: api.ClientConfig }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cfg.baseURL, cfg.token])
 
+  async function openAvatarPicker() {
+    setErr(null)
+    setAvatarLoading(true)
+    try {
+      setAvatarPicker(await api.fetchMyUploadedPhotos(cfg))
+    } catch (e) {
+      setErr(errMsg(e))
+    } finally {
+      setAvatarLoading(false)
+    }
+  }
+
+  const handleChanged = hasProfile && handle.trim() !== savedHandle
+  const { ask, dialog: confirmDialog } = useConfirmDialog()
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (handleChanged) {
+      const choice = await ask({
+        title: '修改 handle',
+        message: `確定要把 handle 從「${savedHandle}」改成「${handle.trim()}」嗎?
+
+所有已發布文章的舊網址(/u/${savedHandle}/…)會立刻失效,已分享出去的連結會變成 404。`,
+        choices: [{ id: 'change', label: '確定修改', variant: 'danger' }],
+      })
+      if (choice !== 'change') return
+    }
     setErr(null)
     setSavedMsg(null)
     setSaving(true)
     try {
       const profile = await api.setMyBlogProfile(cfg, handle.trim(), avatarUrl.trim())
       setHandle(profile.handle)
+      setSavedHandle(profile.handle)
       setAvatarUrl(profile.avatarUrl ?? '')
       setHasProfile(true)
       setSavedMsg('已儲存')
@@ -98,6 +133,11 @@ export function BlogProfileSettings({ cfg }: { cfg: api.ClientConfig }) {
             placeholder="英數字、底線或連字符"
             required
           />
+          {handleChanged && (
+            <span className={styles.warn}>
+              改 handle 會讓已發布文章的舊網址(/u/{savedHandle}/…)失效,已分享的連結會變成 404。
+            </span>
+          )}
         </label>
         <label className={styles.field}>
           <span className={styles.label}>頭像網址(選填)</span>
@@ -108,11 +148,37 @@ export function BlogProfileSettings({ cfg }: { cfg: api.ClientConfig }) {
             onChange={(e) => setAvatarUrl(e.target.value)}
             placeholder="https://..."
           />
+          <span className={styles.avatarRow}>
+            {avatarUrl && <img className={styles.avatarPreview} src={avatarUrl} alt="頭像預覽" />}
+            <Button type="button" variant="secondary" compact onClick={openAvatarPicker} disabled={avatarLoading}>
+              {avatarLoading ? '載入素材庫…' : '從素材庫選擇'}
+            </Button>
+            {avatarUrl && (
+              <Button type="button" variant="secondary" compact onClick={() => setAvatarUrl('')}>
+                移除
+              </Button>
+            )}
+          </span>
         </label>
         <Button type="submit" variant="primary" disabled={saving}>
           {saving ? '儲存中…' : hasProfile ? '更新設定' : '建立設定'}
         </Button>
       </form>
+      {confirmDialog}
+      {avatarPicker && (
+        <PhotoPickerModal
+          photos={avatarPicker}
+          mode="single"
+          title="選擇頭像"
+          onClose={() => setAvatarPicker(null)}
+          onConfirm={(selected) => {
+            const p = selected[0]
+            // 存的是公開網址(頭像會顯示在公開文章頁):優先縮圖,沒有就用原圖。
+            setAvatarUrl(p.variants?.find((v) => v.kind === 'thumbnail')?.url ?? p.originalUrl)
+            setAvatarPicker(null)
+          }}
+        />
+      )}
     </section>
   )
 }

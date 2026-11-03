@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowLeft, Sparkles, MapPin, Image as ImageIcon, Type, Images, X, GripVertical, Quote, Pilcrow } from 'lucide-react'
 import type * as api from '../api'
 import * as apiFns from '../api'
 import { errMsg } from '../AppCommon'
-import { Button } from '../components/Button'
-import { PhotoManagerBody } from './PhotoManagerPage'
+import { PhotoManagerBody, type StagedController } from './PhotoManagerPage'
+import { PhotoPickerModal } from './PhotoPickerModal'
+import { useConfirmDialog } from '../components/ConfirmDialog'
 import {
   NEW_ARTICLE_KEY,
   deleteArticleDraft,
@@ -14,7 +15,16 @@ import {
   type ArticleDraft,
 } from './draftStore'
 import { ArticleAiPanel, BLOG_ARTICLE_AI_ENABLED } from './ArticleAiPanel'
-import type { ArticleEditorHandle, StagedPhotoInfo } from './articleTools'
+import type { ArticleEditorHandle } from './articleTools'
+import {
+  combinePhotos,
+  dropStagedBlocks,
+  isStagedId,
+  remapPhotoIds,
+  stagedIdsIn,
+  stagedKeyOf,
+  type StagedPhotoView,
+} from './stagedPhotos'
 import type {
   ThemePageBlock,
   ThemePageContent,
@@ -197,88 +207,7 @@ function EditableDiv({
       data-variant={dataVariant}
       onBlur={(e) => onChange(e.currentTarget.textContent ?? '')}
     >
-      {value || placeholder}
-    </div>
-  )
-}
-
-// PhotoPickerModal:插入圖片/圖組時,從「圖片素材庫」(本檔下方掛載的
-// PhotoManagerBody 讀的同一份清單)挑選要引用的 photoId——對齊
-// types.ts ImageBlock.photoId 的完整說明:內容裡只存穩定識別碼,不是
-// 檔案路徑/網址。gallery 模式(multi)最少選 2 張、最多 4 張(見
-// GalleryBlock.items 的完整說明,對齊 Medium/Ghost 刻意訂低張數上限的
-// 慣例),選好後一次性建立一個 gallery block;single 模式選一張立刻
-// 插入一個 image block。
-function PhotoPickerModal({
-  photos,
-  mode,
-  onClose,
-  onConfirm,
-}: {
-  photos: api.UploadedPhoto[]
-  mode: 'single' | 'multi'
-  onClose: () => void
-  onConfirm: (selected: api.UploadedPhoto[]) => void
-}) {
-  const [selectedIds, setSelectedIds] = useState<string[]>([])
-  const readyPhotos = photos.filter((p) => p.status === 'ready')
-
-  function toggle(photo: api.UploadedPhoto) {
-    if (mode === 'single') {
-      onConfirm([photo])
-      return
-    }
-    setSelectedIds((prev) =>
-      prev.includes(photo.id) ? prev.filter((id) => id !== photo.id) : prev.length >= 4 ? prev : [...prev, photo.id],
-    )
-  }
-
-  const canConfirmMulti = mode === 'multi' && selectedIds.length >= 2
-
-  return (
-    <div className="rp-modal-backdrop" onClick={onClose}>
-      <div className={`rp-modal ${styles.pickerModal}`} onClick={(e) => e.stopPropagation()}>
-        <div className={styles.pickerHead}>
-          <span className={styles.pickerTitle}>{mode === 'single' ? '選擇一張圖片' : '選擇 2~4 張圖片(多圖組)'}</span>
-          <button type="button" className={styles.pickerClose} onClick={onClose}>
-            <X size={16} strokeWidth={2} />
-          </button>
-        </div>
-        {readyPhotos.length === 0 ? (
-          <div className={styles.pickerEmpty}>素材庫還沒有可用的圖片——先在下方「圖片素材庫」上傳並等待處理完成。</div>
-        ) : (
-          <div className={styles.pickerGrid}>
-            {readyPhotos.map((p) => {
-              const thumb = p.variants?.find((v) => v.kind === 'thumbnail')
-              const selected = selectedIds.includes(p.id)
-              return (
-                <button
-                  key={p.id}
-                  type="button"
-                  className={`${styles.pickerItem}${selected ? ` ${styles.pickerItemSelected}` : ''}`}
-                  onClick={() => toggle(p)}
-                >
-                  <img src={thumb?.url ?? p.originalUrl} alt="" className={styles.pickerItemImg} />
-                  {selected && <span className={styles.pickerItemCheck}>✓</span>}
-                </button>
-              )
-            })}
-          </div>
-        )}
-        {mode === 'multi' && (
-          <div className={styles.pickerFooter}>
-            <span className={styles.pickerHint}>已選 {selectedIds.length} / 4</span>
-            <Button
-              variant="primary"
-              compact
-              disabled={!canConfirmMulti}
-              onClick={() => onConfirm(selectedIds.map((id) => readyPhotos.find((p) => p.id === id)!))}
-            >
-              插入圖組
-            </Button>
-          </div>
-        )}
-      </div>
+      {value}
     </div>
   )
 }
@@ -342,8 +271,13 @@ function buildContent(
   blocks: EditableBlock[],
   status: 'draft' | 'published',
   palette: ThemePagePalette | undefined,
+  heroPhotoId: string | undefined,
+  extra: Record<string, unknown>,
 ): ThemePageContent {
   return {
+    // extra:載入時編輯器不管理的欄位(eyebrow、heroStandalonePhotoId、preferredTheme,以及未來新增的欄位)原樣帶回,
+    // 否則在編輯器存一次就會把它們從後端內容洗掉。放最前面,讓下面編輯器管理的欄位覆蓋。
+    ...(extra as Partial<ThemePageContent>),
     version: 1,
     slug,
     title,
@@ -351,6 +285,7 @@ function buildContent(
     blocks: blocks as ThemePageBlock[],
     status,
     palette,
+    heroPhotoId,
   }
 }
 
@@ -396,11 +331,21 @@ export function ArticleEditor({
   // 屬性值)。作者在編輯器裡切換,存檔時原樣寫進 content.palette,公開
   // 頁讀到同一個值套用一致的配色。
   const [palette, setPalette] = useState<ThemePagePalette | undefined>(undefined)
+  // heroPhotoId:文章封面(types.ts ThemePageContent.heroPhotoId,公開頁當 Hero 滿版背景)。從素材庫挑;
+  // 可以是尚未上傳的 staged:<key>,儲存時跟區塊裡的待上傳圖片一起上傳並換成真實 id。
+  const [heroPhotoId, setHeroPhotoId] = useState<string | undefined>(undefined)
+  const [coverPickerOpen, setCoverPickerOpen] = useState(false)
   const [openMenuAt, setOpenMenuAt] = useState<number | null>(null)
   const [previewing, setPreviewing] = useState(false)
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [picker, setPicker] = useState<{ mode: 'single' | 'multi'; atIndex: number } | null>(null)
-  const [photos, setPhotos] = useState<api.UploadedPhoto[]>([])
+  // serverPhotos:後端素材庫;stagedList:已選檔、尚未上傳的圖片(PhotoManagerBody 的待上傳區回報)。
+  // photos = 兩者合併,編輯畫面、選圖器與 AI 工具都用它——待上傳的圖以 staged:<key> 當 photoId,儲存前才上傳並換成真實 id(見 stagedPhotos.ts)。
+  const [serverPhotos, setPhotos] = useState<api.UploadedPhoto[]>([])
+  const [stagedList, setStagedList] = useState<StagedPhotoView[]>([])
+  const photos = useMemo(() => combinePhotos(serverPhotos, stagedList), [serverPhotos, stagedList])
+  const stagedCtlRef = useRef<StagedController | null>(null)
+  const extraContentRef = useRef<Record<string, unknown>>({})
   const [saving, setSaving] = useState(false)
   const [saveErr, setSaveErr] = useState<string | null>(null)
   const [dirty, setDirty] = useState(false)
@@ -413,16 +358,24 @@ export function ArticleEditor({
     lede: '',
     blocks: [] as EditableBlock[],
     photos: [] as api.UploadedPhoto[],
-    staged: [] as StagedPhotoInfo[],
+    staged: [] as StagedPhotoView[],
     slug: '',
     slugLocked: false,
     status: 'draft' as 'draft' | 'published',
     palette: undefined as ThemePagePalette | undefined,
+    heroPhotoId: undefined as string | undefined,
+    dirty: false,
+    hasPendingDraft: false,
+    draftKey: NEW_ARTICLE_KEY,
+    scope: 'anon',
+    draftFailed: false,
   })
   latestRef.current.slug = slug
   latestRef.current.slugLocked = slugLocked
   latestRef.current.status = status
   latestRef.current.palette = palette
+  latestRef.current.heroPhotoId = heroPhotoId
+  latestRef.current.dirty = dirty
   latestRef.current.title = title
   latestRef.current.lede = lede
   latestRef.current.blocks = blocks
@@ -469,8 +422,119 @@ export function ArticleEditor({
   const scope = draftScope(cfg.token)
   const [pendingDraft, setPendingDraft] = useState<ArticleDraft | null>(null)
   const draftKey = slugLocked ? slug : NEW_ARTICLE_KEY
+  const { ask, dialog: confirmDialog } = useConfirmDialog()
+  latestRef.current.hasPendingDraft = pendingDraft !== null
+  latestRef.current.draftKey = draftKey
+  latestRef.current.scope = scope
+
+  // flushDraft:立刻把目前未儲存的內容寫進本機草稿(不等 debounce)。離開編輯器、卸載、關分頁前呼叫,
+  // 避免最後 0.5 秒內的改動沒存到。一律讀 latestRef,不依賴 render 當下的值。
+  function flushDraft() {
+    const c = latestRef.current
+    if (!c.dirty || c.hasPendingDraft) return
+    if (!c.slugLocked && c.title === '' && c.lede === '' && c.blocks.length === 0) return
+    void saveArticleDraft(c.scope, c.draftKey, {
+      title: c.title,
+      lede: c.lede,
+      blocks: c.blocks,
+      palette: c.palette,
+      heroPhotoId: c.heroPhotoId,
+      savedAt: Date.now(),
+    }).then((ok) => {
+      latestRef.current.draftFailed = !ok
+    })
+  }
+  const flushDraftRef = useRef(flushDraft)
+  flushDraftRef.current = flushDraft
+  // 關閉/重新整理分頁前:先把草稿寫進本機;只有「本機草稿寫入失敗」(例如瀏覽器封鎖 IndexedDB)時才啟用瀏覽器原生的
+  // 離開提示——那個提示文字與樣式無法自訂,平常有草稿兜底就不打擾使用者。元件卸載(切到別的面板)也補寫一次。
+  useEffect(() => {
+    function onBeforeUnload(e: BeforeUnloadEvent) {
+      if (!latestRef.current.dirty) return
+      flushDraftRef.current()
+      if (latestRef.current.draftFailed) e.preventDefault()
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => {
+      window.removeEventListener('beforeunload', onBeforeUnload)
+      flushDraftRef.current()
+    }
+  }, [])
+
+  // handleBack:返回文章列表。有未儲存變更時先確認——離開不會丟內容(已寫進本機草稿,下次開啟可還原),
+  // 但那份草稿只存在這個瀏覽器、也不會出現在公開頁,讓使用者知道這件事再決定。
+  async function handleBack() {
+    if (!latestRef.current.dirty) {
+      onBack?.()
+      return
+    }
+    flushDraft()
+    const draftOk = !latestRef.current.draftFailed
+    const choice = await ask({
+      title: '有尚未儲存的變更',
+      message: draftOk
+        ? '這篇文章有尚未儲存的變更。\n不儲存直接離開的話,內容會暫存在這個瀏覽器,下次開啟這篇時可以還原,但不會出現在你的文章裡。'
+        : '這篇文章有尚未儲存的變更,而且這個瀏覽器無法暫存草稿——不儲存就離開,這些變更會遺失。',
+      choices: [
+        { id: 'save', label: '儲存並離開', variant: 'primary' },
+        { id: 'leave', label: draftOk ? '不儲存,直接離開' : '放棄變更並離開', variant: 'secondary' },
+      ],
+      cancelLabel: '繼續編輯',
+    })
+    if (choice === 'leave') {
+      onBack?.()
+    } else if (choice === 'save') {
+      setSaveErr(null)
+      setSaving(true)
+      try {
+        const r = await persistArticle()
+        if (r.warning) {
+          // 儲存不完整(有圖片沒上傳成功)——留在編輯器讓使用者處理,不直接離開。
+          setSaveErr(r.warning)
+          return
+        }
+        onBack?.()
+      } catch (e) {
+        setSaveErr(errMsg(e))
+      } finally {
+        setSaving(false)
+      }
+    }
+  }
   const cfgRef = useRef(cfg)
   cfgRef.current = cfg
+  // refreshPhotos:重新抓後端素材庫(含剛上傳的圖)。只用 ref 與 setState,身分穩定,AI 工具與儲存流程共用。
+  const refreshPhotosRef = useRef(async (): Promise<api.UploadedPhoto[]> => {
+    try {
+      const list = await apiFns.fetchMyUploadedPhotos(cfgRef.current)
+      latestRef.current.photos = combinePhotos(list, latestRef.current.staged)
+      setPhotos(list)
+    } catch {
+      /* 抓不到就用目前快取 */
+    }
+    return latestRef.current.photos
+  })
+  // handleStagedChange:待上傳區變動——同步寫進 ref(AI 工具立刻讀得到)並更新畫面。
+  const handleStagedChange = useCallback((list: StagedPhotoView[]) => {
+    latestRef.current.staged = list
+    latestRef.current.photos = combinePhotos(latestRef.current.photos.filter((p) => !isStagedId(p.id)), list)
+    setStagedList(list)
+  }, [])
+  // handleStagedUploaded:一張待上傳圖片上傳成功,區塊裡的 staged:key 換成真實 photoId,並重新讀素材庫讓畫面有網址可用。
+  const handleStagedUploaded = useCallback((key: string, photoId: string) => {
+    const next = remapPhotoIds(latestRef.current.blocks, { [`staged:${key}`]: photoId })
+    if (next !== latestRef.current.blocks) {
+      latestRef.current.blocks = next
+      setBlocks(next)
+      setDirty(true)
+    }
+    if (latestRef.current.heroPhotoId === `staged:${key}`) {
+      latestRef.current.heroPhotoId = photoId
+      setHeroPhotoId(photoId)
+      setDirty(true)
+    }
+    void refreshPhotosRef.current()
+  }, [])
   const aiHandleRef = useRef<ArticleEditorHandle | null>(null)
   if (aiHandleRef.current === null) {
     aiHandleRef.current = {
@@ -488,23 +552,15 @@ export function ArticleEditor({
         setDirty(true)
       },
       getPhotos: () => latestRef.current.photos,
-      getStagedPhotos: () => latestRef.current.staged,
-      refreshPhotos: async () => {
-        try {
-          const list = await apiFns.fetchMyUploadedPhotos(cfgRef.current)
-          latestRef.current.photos = list
-          setPhotos(list)
-        } catch {
-          /* 抓不到就用目前快取 */
-        }
-        return latestRef.current.photos
-      },
+      refreshPhotos: refreshPhotosRef.current,
       isPublished: () => latestRef.current.status === 'published',
       save: async () => {
         setSaveErr(null)
         setSaving(true)
         try {
-          return await persistArticle()
+          const r = await persistArticle()
+          if (r.warning) setSaveErr(r.warning)
+          return r
         } catch (e) {
           setSaveErr(errMsg(e))
           throw e
@@ -558,6 +614,10 @@ export function ArticleEditor({
         setBlocks(Array.isArray(content.blocks) ? (content.blocks as EditableBlock[]) : [])
         setStatus(page.status)
         setPalette(content.palette)
+        setHeroPhotoId(content.heroPhotoId)
+        // 編輯器管理的欄位以外的內容保留起來,儲存時原樣帶回(見 buildContent 的 extra)。
+        const { version: _v, slug: _s, title: _t, lede: _l, blocks: _b, status: _st, palette: _p, heroPhotoId: _h, ...rest } = content
+        extraContentRef.current = rest
         setLoading(false)
       },
       (e) => {
@@ -584,6 +644,7 @@ export function ArticleEditor({
         d.title === cur.title &&
         d.lede === cur.lede &&
         (d.palette ?? null) === (cur.palette ?? null) &&
+        (d.heroPhotoId ?? null) === (cur.heroPhotoId ?? null) &&
         JSON.stringify(d.blocks) === JSON.stringify(cur.blocks)
       const empty = d.title === '' && d.lede === '' && d.blocks.length === 0
       if (same || empty) {
@@ -606,10 +667,12 @@ export function ArticleEditor({
         void deleteArticleDraft(scope, draftKey)
         return
       }
-      void saveArticleDraft(scope, draftKey, { title, lede, blocks, palette, savedAt: Date.now() })
+      void saveArticleDraft(scope, draftKey, { title, lede, blocks, palette, heroPhotoId, savedAt: Date.now() }).then((ok) => {
+        latestRef.current.draftFailed = !ok
+      })
     }, 500)
     return () => clearTimeout(t)
-  }, [loading, loadErr, dirty, pendingDraft, scope, draftKey, slugLocked, title, lede, blocks, palette])
+  }, [loading, loadErr, dirty, pendingDraft, scope, draftKey, slugLocked, title, lede, blocks, palette, heroPhotoId])
 
   function restoreDraft() {
     const d = pendingDraft
@@ -618,6 +681,7 @@ export function ArticleEditor({
     setLede(d.lede)
     setBlocks(d.blocks as EditableBlock[])
     setPalette(d.palette as ThemePagePalette | undefined)
+    setHeroPhotoId(d.heroPhotoId)
     setDirty(true)
     setPendingDraft(null)
   }
@@ -691,11 +755,40 @@ export function ArticleEditor({
 
   // persistArticle:實際存檔。一律讀 latestRef(最新狀態),不讀 render 當下的 state——AI 工具(save_article)
   // 在同一輪裡剛改完文章就會呼叫,React 還沒重繪,直接讀 state 會存到舊內容。成功回傳最終 slug 與是否為新建。
-  async function persistArticle(): Promise<{ slug: string; created: boolean }> {
+  //
+  // 區塊引用到尚未上傳的圖片(staged:)時,先上傳換成真實 photoId 再存;後端內容不會出現 staged: id。
+  // 照片上傳失敗不擋文章儲存:失敗的圖片區塊只從「送後端的內容」略過(編輯器裡仍保留,可再按儲存重試),
+  // 回傳的 warning 說明略過了幾張與原因;有略過時保持 dirty,也不清本機草稿(草稿裡還有那些圖片區塊)。
+  async function persistArticle(): Promise<{ slug: string; created: boolean; warning?: string }> {
+    let warning: string | undefined
+    const pendingIds = stagedIdsIn(latestRef.current.blocks)
+    const heroNow = latestRef.current.heroPhotoId
+    if (heroNow && isStagedId(heroNow) && !pendingIds.includes(heroNow)) pendingIds.push(heroNow)
+    if (pendingIds.length > 0) {
+      const ctl = stagedCtlRef.current
+      if (ctl) {
+        const { failed } = await ctl.uploadStaged(pendingIds.map(stagedKeyOf))
+        await refreshPhotosRef.current()
+        if (failed.length > 0) warning = failed.map((f) => f.message).join(';')
+      } else {
+        warning = '待上傳圖片區尚未就緒'
+      }
+    }
     const cur = latestRef.current
+    const dropped = dropStagedBlocks(cur.blocks)
+    const sendBlocks = dropped.blocks
+    // 封面還是待上傳(上傳失敗)時,送後端的內容先不帶封面。
+    const heroUnresolved = cur.heroPhotoId !== undefined && isStagedId(cur.heroPhotoId)
+    const sendHero = heroUnresolved ? undefined : cur.heroPhotoId
+    const skipped = dropped.skipped + (heroUnresolved ? 1 : 0)
+    if (skipped > 0) {
+      warning = `有 ${skipped} 張圖片沒能上傳,文章已先儲存但略過這些圖片區塊(編輯器裡還保留,修正後再按儲存):${warning ?? '圖片不在待上傳區'}`
+    } else {
+      warning = undefined
+    }
     let finalSlug = cur.slug.trim()
     if (finalSlug === '') finalSlug = slugify(cur.title)
-    const content = buildContent(finalSlug, cur.title, cur.lede, cur.blocks, cur.status, cur.palette)
+    const content = buildContent(finalSlug, cur.title, cur.lede, sendBlocks, cur.status, cur.palette, sendHero, extraContentRef.current)
     let created = false
     if (cur.slugLocked) {
       await apiFns.updateMyContentPage(cfg, finalSlug, content)
@@ -707,18 +800,24 @@ export function ArticleEditor({
     }
     latestRef.current.slug = finalSlug
     setSlug(finalSlug)
-    setDirty(false)
-    // 已存到伺服器,本機草稿作廢(新文章的草稿存在 NEW_ARTICLE_KEY,存檔後改用 slug,兩個都清)。
-    void deleteArticleDraft(scope, NEW_ARTICLE_KEY)
-    void deleteArticleDraft(scope, finalSlug)
-    return { slug: finalSlug, created }
+    if (!warning) {
+      setDirty(false)
+      // 已完整存到伺服器,本機草稿作廢(新文章的草稿存在 NEW_ARTICLE_KEY,存檔後改用 slug,兩個都清)。
+      void deleteArticleDraft(scope, NEW_ARTICLE_KEY)
+      void deleteArticleDraft(scope, finalSlug)
+    } else if (created) {
+      // 新文章已建立但草稿還有略過的圖片:草稿改以 slug 為 key 繼續保存(NEW_ARTICLE_KEY 那份作廢)。
+      void deleteArticleDraft(scope, NEW_ARTICLE_KEY)
+    }
+    return { slug: finalSlug, created, warning }
   }
 
   async function handleSave() {
     setSaveErr(null)
     setSaving(true)
     try {
-      await persistArticle()
+      const r = await persistArticle()
+      if (r.warning) setSaveErr(r.warning)
     } catch (e) {
       setSaveErr(errMsg(e))
     } finally {
@@ -731,6 +830,20 @@ export function ArticleEditor({
     setSaveErr(null)
     const nextPublished = status !== 'published'
     try {
+      // 發布前若畫面有未儲存的變更(或上次儲存略過了上傳失敗的圖片),先存一次再發布——否則公開的是舊版本。
+      // 儲存不完整(有略過圖片)時不發布,把原因顯示出來讓使用者處理。取消發布不受影響。
+      if (nextPublished && latestRef.current.dirty) {
+        setSaving(true)
+        try {
+          const r = await persistArticle()
+          if (r.warning) {
+            setSaveErr(`已先儲存但內容不完整,未發布:${r.warning}`)
+            return
+          }
+        } finally {
+          setSaving(false)
+        }
+      }
       await apiFns.setMyContentPagePublished(cfg, slug, nextPublished)
       setStatus(nextPublished ? 'published' : 'draft')
     } catch (e) {
@@ -759,7 +872,7 @@ export function ArticleEditor({
       <div className={styles.topbar}>
         <div className={styles.topbarMeta}>
           {onBack && (
-            <button type="button" className={styles.backBtn} onClick={onBack}>
+            <button type="button" className={styles.backBtn} onClick={handleBack}>
               <ArrowLeft size={14} strokeWidth={2} />
               返回文章列表
             </button>
@@ -832,7 +945,22 @@ export function ArticleEditor({
       <div className={styles.body}>
       <div className={styles.articlePane}>
         <div className={styles.cover}>
-          <div className={styles.coverEditHint}>點擊更換封面（尚未實作上傳）</div>
+          {heroPhotoId && photoURLFor(photos, heroPhotoId) && (
+            <>
+              <img src={photoURLFor(photos, heroPhotoId)} alt="" className={styles.coverImg} />
+              <div className={styles.coverShade} />
+            </>
+          )}
+          <div className={styles.coverActions}>
+            <button type="button" className={styles.coverBtn} onClick={() => setCoverPickerOpen(true)}>
+              {heroPhotoId ? '更換封面' : '選擇封面'}
+            </button>
+            {heroPhotoId && (
+              <button type="button" className={styles.coverBtn} onClick={() => { setHeroPhotoId(undefined); markDirty() }}>
+                移除封面
+              </button>
+            )}
+          </div>
           <div className={styles.coverCaption}>
             <div className={styles.coverEyebrow}>
               {placeCount > 0 ? `${placeCount} 個站點 · ` : ''}
@@ -944,7 +1072,12 @@ export function ArticleEditor({
                 先在這裡上傳、管理這篇文章要用的圖片，再回到上方正文用「插入圖片」或「插入圖組」放進內容。
               </div>
             </div>
-            <PhotoManagerBody cfg={cfg} onStagedChange={(list) => (latestRef.current.staged = list)} />
+            <PhotoManagerBody
+              cfg={cfg}
+              onStagedChange={handleStagedChange}
+              onStagedUploaded={handleStagedUploaded}
+              controllerRef={stagedCtlRef}
+            />
           </div>
         </div>
       </div>
@@ -952,6 +1085,21 @@ export function ArticleEditor({
         <ArticleAiPanel handle={aiHandleRef.current} open={aiOpen} onClose={closeAi} onBusyChange={setAiBusy} />
       )}
       </div>
+
+      {confirmDialog}
+      {coverPickerOpen && (
+        <PhotoPickerModal
+          photos={photos}
+          mode="single"
+          title="選擇封面圖片"
+          onClose={() => setCoverPickerOpen(false)}
+          onConfirm={(selected) => {
+            setHeroPhotoId(selected[0].id)
+            setCoverPickerOpen(false)
+            markDirty()
+          }}
+        />
+      )}
 
       {picker && (
         <PhotoPickerModal

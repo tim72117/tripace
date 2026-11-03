@@ -14,7 +14,6 @@ import {
   type ArticleBlock,
   type ArticleEditorHandle,
   type ArticleState,
-  type StagedPhotoInfo,
 } from './articleTools'
 
 function photo(id: string, over: Partial<UploadedPhoto> = {}): UploadedPhoto {
@@ -26,17 +25,16 @@ const PHOTOS = [
   photo('p3', { note: '老街' }),
   photo('p4', { status: 'pending' }),
 ]
-function makeHandle(init: Partial<ArticleState> = {}): ArticleEditorHandle & { state: ArticleState; published: boolean; saved: number; staged: StagedPhotoInfo[] } {
+function makeHandle(init: Partial<ArticleState> = {}): ArticleEditorHandle & { state: ArticleState; published: boolean; saved: number; extra: UploadedPhoto[] } {
   const h = {
     state: { title: '', lede: '', blocks: [] as ArticleBlock[], ...init },
     getState: () => h.state,
     setState: (n: ArticleState) => {
       h.state = n
     },
-    getPhotos: () => PHOTOS,
-    getStagedPhotos: () => h.staged,
-    refreshPhotos: async () => PHOTOS,
-    staged: [] as StagedPhotoInfo[],
+    getPhotos: () => [...h.extra, ...PHOTOS],
+    refreshPhotos: async () => [...h.extra, ...PHOTOS],
+    extra: [] as UploadedPhoto[],
     published: false,
     saved: 0,
     isPublished: () => h.published,
@@ -100,18 +98,14 @@ describe('insertIndex', () => {
 })
 
 describe('tools', () => {
-  it('list_photos 附上尚未上傳的待上傳圖片(沒有 photoId)', async () => {
+  it('list_photos 含尚未上傳的待上傳圖片(staged:),標 uploaded:false,且 add_block 可用', async () => {
     const h = makeHandle()
-    h.staged = [{ key: 'k1', filename: 'a.jpg', note: ' 清水寺 ' }, { key: 'k2', filename: 'b.jpg' }]
-    const r = (await call(listPhotos)({}, h)) as {
-      staged: { stagedKey: string; filename: string; note: string }[]
-      stagedNotUploaded: number
-    }
-    expect(r.stagedNotUploaded).toBe(2)
-    expect(r.staged).toEqual([
-      { stagedKey: 'k1', filename: 'a.jpg', note: '清水寺' },
-      { stagedKey: 'k2', filename: 'b.jpg', note: '' },
-    ])
+    h.extra = [photo('staged:k1', { note: '清水寺', width: 300, height: 400 })]
+    const r = (await call(listPhotos)({}, h)) as { photos: { photoId: string; uploaded: boolean; orientation?: string }[] }
+    expect(r.photos[0]).toMatchObject({ photoId: 'staged:k1', uploaded: false, orientation: 'portrait' })
+    expect(r.photos.find((p) => p.photoId === 'p1')?.uploaded).toBe(true)
+    call(addBlock)({ kind: 'image', photoId: 'staged:k1', alt: '舞台' }, h)
+    expect(h.state.blocks[0]).toMatchObject({ kind: 'image', photoId: 'staged:k1' })
   })
   it('list_photos 只回 ready,算出方向與未備註數', async () => {
     const r = (await call(listPhotos)({}, makeHandle())) as {

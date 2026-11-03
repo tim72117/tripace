@@ -6,13 +6,13 @@
 
 name: list_photos
 description: >-
-  列出使用者素材庫裡「已處理完成」的圖片(每次呼叫都重新讀取),每張回傳
-  photoId、note(場景描述,空字串=沒有備註)、rating(1~3,null=未評分)、
-  orientation(portrait 直式 / landscape 橫式);withoutNote 是沒有備註的張數。
-  另有 staged:使用者已選檔、尚未上傳的圖片(stagedKey、filename、note),
-  它們沒有 photoId,不能放進文章,請使用者先按「上傳」再重新呼叫本工具。
-  add_block 的 photoId 只能用 photos 裡的值,不可編造。沒有備註的圖不要
-  亂猜內容,可以跳過,或請使用者先補備註。
+  列出使用者可用的圖片(每次呼叫都重新讀取),每張回傳 photoId、uploaded、
+  note(場景描述,空字串=沒有備註)、rating(1~3,null=未評分)、orientation
+  (portrait 直式 / landscape 橫式);withoutNote 是沒有備註的張數。
+  uploaded:false 是使用者已選檔但還沒上傳的圖(photoId 以 staged: 開頭),
+  一樣可以放進文章,使用者按「儲存」時會自動上傳。add_block 的 photoId 只能
+  用這裡回傳過的值,不可編造。沒有備註的圖不要亂猜內容,可以跳過,或請使用者
+  先補備註。
 kind: query
 parameters:
   type: object

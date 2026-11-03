@@ -1296,12 +1296,57 @@ export function fetchPublicThemePage(cfg: ClientConfig, slug: string) {
 // 選填是因為舊資料/尚未指定作者的頁面不會有這個欄位。content 同樣用
 // unknown,形狀由呼叫端依 web/src/blog/types.ts 的 ThemePageContent 自行
 // 斷言。
+export interface BlogAuthor {
+  handle: string
+  avatarUrl?: string
+}
+
+// BlogArticleSummary:作者頁 / 部落格首頁的文章卡摘要(後端 GET /v1/blog/{handle}、GET /v1/blog-index)。
+export interface BlogArticleSummary {
+  slug: string
+  title: string
+  lede?: string
+  heroPhotoId?: string
+  publishedAt: string
+  // 只有部落格首頁(跨作者)會帶 handle / avatarUrl;作者頁在回應最外層有 author。
+  handle?: string
+  avatarUrl?: string
+}
+
 export function fetchPublicBlogArticle(cfg: ClientConfig, handle: string, slug: string) {
-  return request<{ id: string; slug: string; content: unknown; status: string; updatedAt: string; ownerId?: string }>(
+  return request<{
+    id: string
+    slug: string
+    content: unknown
+    status: string
+    updatedAt: string
+    ownerId?: string
+    author?: BlogAuthor
+    publishedAt?: string
+  }>(
     cfg,
     'GET',
     `/v1/blog/${encodeURIComponent(handle)}/${encodeURIComponent(slug)}`,
   )
+}
+
+// fetchPublicBlogAuthor:GET /v1/blog/{handle}(免登入)——作者頁:作者資料與已發布文章(新→舊)。handle 不存在為 404。
+export function fetchPublicBlogAuthor(cfg: ClientConfig, handle: string) {
+  return request<{ author: BlogAuthor; articles: BlogArticleSummary[] }>(
+    cfg,
+    'GET',
+    `/v1/blog/${encodeURIComponent(handle)}`,
+  )
+}
+
+// fetchBlogIndex:GET /v1/blog-index(免登入)——部落格首頁:跨作者最新已發布文章。
+export function fetchBlogIndex(cfg: ClientConfig, limit = 30) {
+  return request<{ articles: BlogArticleSummary[] }>(cfg, 'GET', `/v1/blog-index?limit=${limit}`)
+}
+
+// deleteMyContentPage:DELETE /v1/blog/articles/{slug}——刪除登入者自己名下的文章(不可復原)。
+export function deleteMyContentPage(cfg: ClientConfig, slug: string) {
+  return request<{ status: string }>(cfg, 'DELETE', `/v1/blog/articles/${encodeURIComponent(slug)}`)
 }
 
 // fetchPublicItineraryPage:GET /v1/itinerary-pages/{slug}(免登入,見

@@ -367,6 +367,10 @@
 .theme-page-demo-author-name {
   font-weight: 600;
   color: var(--ink);
+  text-decoration: none;
+}
+a.theme-page-demo-author-name:hover {
+  text-decoration: underline;
 }
 .theme-page-demo-author-sep {
   opacity: 0.5;

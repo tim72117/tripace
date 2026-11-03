@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { BASE_URL } from '../AppCommon'
-import { fetchPublicBlogArticle, fetchPublicBlogPhotosByIDs, type ClientConfig, type PublicUploadedPhoto } from '../api'
+import { fetchPublicBlogArticle, fetchPublicBlogPhotosByIDs, type BlogAuthor, type ClientConfig, type PublicUploadedPhoto } from '../api'
+import { Link } from 'react-router-dom'
 import { NotFoundPage } from '../home/NotFoundPage'
 import { useThemeToggle } from '../hooks/useThemeToggle'
 import { useScrollProgress } from '../hooks/useScrollProgress'
@@ -121,28 +122,21 @@ function photoUrl(file: string) {
   return `${PHOTO_BASE}/${file}`
 }
 
-// FAKE_AUTHOR——2026-10 暫時假資料:後端 theme_pages 表目前沒有
-// owner/userId/作者頭像等欄位(見 docs/brainstorm/2026-10-product-
-// direction-brainstorm.md 構想五的完整說明,這批功能排在後端 userId
-// 欄位與查詢改造之後才會真的接上真實資料),之後要接真實作者資料時,
-// 整個换成從 content(或後端回應)讀取真正欄位即可,renderAuthorBelowLede
-// 本身不需要大改,只是資料來源從這個假常數換成真實欄位。
-const FAKE_AUTHOR = {
-  name: 'tim72117',
-  avatarUrl: 'https://storage.googleapis.com/shuttle-tripace-photos/review/tainan-chikan/IMG_9812.webp',
-  publishedAt: '2026-10-12',
-}
-
 // renderAuthorBelowLede:標題+導言(lede)下方,頭像+作者名+發布日期
 // 一行,讓讀者先專注標題與導言,再看到作者身份。試做階段曾比較過另外
 // 兩種位置(eyebrow 上方、文章結尾的獨立卡片),已移除,見 git 歷史。
-function renderAuthorBelowLede() {
+// 作者與發布日期來自後端 GET /v1/blog/{handle}/{slug} 的 author / publishedAt(真實資料);
+// 後端沒帶 author(舊版回應)時整列不顯示,不退回任何假資料。
+function renderAuthorBelowLede(author: BlogAuthor | undefined, publishedAt: string | undefined) {
+  if (!author) return null
+  const date = publishedAt ? new Date(publishedAt) : null
+  const dateText = date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString('sv-SE') : ''
   return (
     <div className="theme-page-demo-author theme-page-demo-author--below-lede">
-      <img className="theme-page-demo-author-avatar" src={FAKE_AUTHOR.avatarUrl} alt={FAKE_AUTHOR.name} />
-      <span className="theme-page-demo-author-name">{FAKE_AUTHOR.name}</span>
-      <span className="theme-page-demo-author-sep">·</span>
-      <time className="theme-page-demo-author-date">{FAKE_AUTHOR.publishedAt}</time>
+      {author.avatarUrl && <img className="theme-page-demo-author-avatar" src={author.avatarUrl} alt={author.handle} />}
+      <Link className="theme-page-demo-author-name" to={`/u/${encodeURIComponent(author.handle)}`}>{author.handle}</Link>
+      {dateText && <span className="theme-page-demo-author-sep">·</span>}
+      {dateText && <time className="theme-page-demo-author-date" dateTime={publishedAt}>{dateText}</time>}
     </div>
   )
 }
@@ -391,7 +385,7 @@ function renderScrollTimelineGroup(group: ScrollTimelineGroup, key: string, phot
 // 邏輯。
 type FetchState =
   | { kind: 'loading' }
-  | { kind: 'api'; content: ThemePageContent }
+  | { kind: 'api'; content: ThemePageContent; author?: BlogAuthor; publishedAt?: string }
   | { kind: 'not-found' }
 
 // EMPTY_CONTENT(2026-10 取代原本的 sampleTainanChikan 假資料)——
@@ -453,7 +447,7 @@ export function BlogArticlePage({ handle, slug }: { handle: string; slug: string
           setState({ kind: 'not-found' })
           return
         }
-        setState({ kind: 'api', content: res.content })
+        setState({ kind: 'api', content: res.content, author: res.author, publishedAt: res.publishedAt })
       })
       .catch((err) => {
         if (cancelled) return
@@ -592,7 +586,7 @@ export function BlogArticlePage({ handle, slug }: { handle: string; slug: string
               renderAuthorBelowLede 的完整說明。試做階段曾同時比較三種
               位置方案(eyebrow 上方/導言下方/獨立卡片),這裡保留的是
               導言下方這個,讓讀者先專注標題與導言,再看到作者身份。 */}
-          {renderAuthorBelowLede()}
+          {renderAuthorBelowLede(state.author, state.publishedAt)}
         </div>
       </header>
 

@@ -1,0 +1,43 @@
+/* 手機版部落格全螢幕疊加層:規劃端在這期間由 Activity 暫停(見 phone/Content.tsx),部落格列表與編輯器直接鋪滿整個畫面。
+   z-index 用 Z_LAYERS.ABOVE_TAB_BAR 由呼叫端 inline 帶入(蓋過底部功能列與各 bottom sheet)。 */
+.overlay {
+  position: fixed;
+  inset: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--ios-bg);
+  color: var(--color-dark);
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.bar {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--ios-card);
+  border-bottom: 1px solid var(--ios-sep);
+}
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: none;
+  background: none;
+  color: var(--ios-blue);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 6px 4px 0;
+}
+.title {
+  font-size: 15px;
+  font-weight: 700;
+}
+.list {
+  padding: 16px 14px 32px;
+}

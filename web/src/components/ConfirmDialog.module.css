@@ -1,0 +1,26 @@
+/* ConfirmDialog 內容區:.rp-modal-body 只給捲動骨架、不含內距,內距與文字色由呼叫端負責(深色模式要明確指定文字色)。
+   按鈕改成靠右並排的一般尺寸——Button 的 primary/secondary/danger 預設是撐滿整列的區塊按鈕(給表單用),
+   在對話框裡會疊成三個大按鈕,所以用 .actions > button 的特異性蓋掉 display/width/padding。 */
+.body {
+  padding: 18px 20px 20px;
+  color: var(--color-dark);
+}
+.message {
+  font-size: 14px;
+  line-height: 1.7;
+  white-space: pre-line;
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 18px;
+}
+.actions > button {
+  display: inline-block;
+  width: auto;
+  flex: 0 0 auto;
+  padding: 9px 16px;
+  font-size: 14px;
+}

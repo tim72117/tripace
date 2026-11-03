@@ -47,6 +47,18 @@ function canvasToJpeg(canvas: HTMLCanvasElement, quality: number): Promise<Blob>
   })
 }
 
+// imageSize:讀圖片(通常是縮圖)的像素尺寸,供待上傳圖片判斷直式/橫式;讀不到回 null。
+export async function imageSize(blob: Blob): Promise<{ width: number; height: number } | null> {
+  try {
+    const bmp = await createImageBitmap(blob)
+    const size = { width: bmp.width, height: bmp.height }
+    bmp.close()
+    return size
+  } catch {
+    return null
+  }
+}
+
 // generatePhotoVariants:解碼一次原圖,依 VARIANT_SPECS 產生三種 JPEG 縮圖。瀏覽器無法解碼
 // 的格式(例如部分瀏覽器的 HEIC)會丟出錯誤,呼叫端應在建立上傳記錄「之前」呼叫,失敗就不上傳。
 export async function generatePhotoVariants(file: Blob): Promise<Record<PhotoVariantKind, Blob>> {

@@ -9,6 +9,7 @@
 import type { UploadedPhoto } from '../api'
 import { defineTool } from '../sdk-proposals/defineTool'
 import type { ClientTool } from '../sdk-proposals/arrayTools'
+import { isStagedId } from './stagedPhotos'
 import type { GalleryBlock, ImageBlock, ImageFloat, ImageOrientation, ImageWidth, ParagraphBlock, ParagraphVariant, StopBlock } from './types'
 
 export type ArticleBlock = ParagraphBlock | ImageBlock | GalleryBlock | StopBlock
@@ -21,25 +22,18 @@ export interface ArticleState {
 
 // ArticleEditorHandle:ArticleEditor 提供給工具的控制介面。getState 必須回傳「最新」狀態(含同一輪稍早的工具
 // 呼叫剛寫入、React 還沒重繪的變更),所以實作端要用 ref 同步更新,不能直接讀 render 當下的 state。
-// StagedPhotoInfo:素材庫「待上傳區」裡已選檔、已在前端縮圖,但尚未上傳的圖片。還沒有 photoId,
-// 只能讓 AI 讀(檔名與辨識備註),不能放進區塊——要先請使用者按「上傳」。
-export interface StagedPhotoInfo {
-  key: string
-  filename: string
-  note?: string
-}
-
 export interface ArticleEditorHandle {
   getState(): ArticleState
   setState(next: ArticleState): void
+  // getPhotos:編輯器可用的圖片——後端素材庫,加上「已選檔、尚未上傳」的待上傳圖片(id 以 staged: 開頭,見 stagedPhotos.ts)。
   getPhotos(): UploadedPhoto[]
-  getStagedPhotos(): StagedPhotoInfo[]
-  // refreshPhotos:向後端重新抓一次素材庫清單並更新編輯器(取得剛上傳、剛改備註的圖);失敗時回傳目前快取,不丟錯。
+  // refreshPhotos:向後端重新抓一次素材庫清單並更新編輯器(取得剛上傳、剛改備註的圖),結果仍含待上傳圖片;失敗時回傳目前快取,不丟錯。
   refreshPhotos(): Promise<UploadedPhoto[]>
   // isPublished:這篇是否已發佈(已發佈的不讓 AI 存,避免直接覆蓋公開內容)。
   isPublished(): boolean
   // save:存檔(新文章會建立並自動產生 slug),失敗會 throw。實作端與「儲存」按鈕共用同一條邏輯。
-  save(): Promise<{ slug: string; created: boolean }>
+  // warning:有圖片沒能上傳時,文章仍已儲存但略過那些圖片區塊,這裡說明原因。
+  save(): Promise<{ slug: string; created: boolean; warning?: string }>
 }
 
 const VARIANTS: ParagraphVariant[] = ['heading', 'emphasis', 'quote', 'caption']
@@ -182,23 +176,14 @@ export const listPhotos: ClientTool<ArticleEditorHandle> = defineTool(
       const h = thumb?.height ?? p.height
       return {
         photoId: p.id,
+        // uploaded:false=還沒上傳,只存在這個瀏覽器;可以照常放進區塊,按「儲存」時會自動上傳。
+        uploaded: !isStagedId(p.id),
         note: p.note ?? '',
         rating: p.rating ?? null,
         orientation: w && h ? (h > w ? 'portrait' : 'landscape') : undefined,
       }
     })
-    const staged = handle.getStagedPhotos().map((p) => ({
-      stagedKey: p.key,
-      filename: p.filename,
-      note: p.note?.trim() ?? '',
-    }))
-    return {
-      photos,
-      withoutNote: photos.filter((p) => p.note === '').length,
-      // staged:尚未上傳的圖片,沒有 photoId,不能用在 add_block / update_block。
-      staged,
-      stagedNotUploaded: staged.length,
-    }
+    return { photos, withoutNote: photos.filter((p) => p.note === '').length }
   },
 )
 
@@ -291,7 +276,7 @@ export const saveArticle: ClientTool<ArticleEditorHandle> = defineTool(
     if (s.title.trim() === '') throw new Error('文章還沒有標題,請先用 set_meta 設定 title 再存檔')
     if (s.blocks.length === 0) throw new Error('文章還沒有任何區塊,沒有內容可以存')
     const r = await handle.save()
-    return { ok: true, slug: r.slug, created: r.created, status: 'draft' }
+    return { ok: true, slug: r.slug, created: r.created, status: 'draft', ...(r.warning ? { warning: r.warning } : {}) }
   },
 )
 
